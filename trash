@@ -1,0 +1,165 @@
+        // Бустим крипов
+        /*do {
+            const boost = Game.rooms["W9S37"].find(FIND_MY_CREEPS, {
+                // У крипа нет забущеных частей
+                filter: (c) => c.memory.boost
+            });
+            if (boost.length) break;
+
+            const storage = Game.rooms["W9S37"].find(FIND_MY_STRUCTURES, {
+                filter: (s) => s.store && s.store.getUsedCapacity("XGH2O") > 150
+            });
+            if (!storage.length) break;
+
+            const creeps = Game.rooms["W9S37"].find(FIND_MY_CREEPS, {
+                // У крипа нет запущеных частей
+                filter: (c) => c.name.indexOf("Upgrader") == 0
+                            && !c.hasAnyBoosts()
+                            && !c.memory.repairing
+            });
+            if (!creeps.length) break;
+
+            creeps[0].memory.healing = true;
+            creeps[0].memory.boost = "XGH2O";
+        }while (false);
+        do {
+            const boost = Game.rooms["W9S37"].find(FIND_MY_CREEPS, {
+                // У крипа нет забущеных частей
+                filter: (c) => c.memory.boost
+            });
+            if (boost.length) break;
+
+            const storage = Game.rooms["W9S37"].find(FIND_MY_STRUCTURES, {
+                filter: (s) => s.store && s.store.getUsedCapacity("XLH20") > 150
+            });
+            if (!storage.length) break;
+
+            const creeps = Game.rooms["W9S37"].find(FIND_MY_CREEPS, {
+                // У крипа нет запущеных частей
+                filter: (c) => c.name.indexOf("Upgrader") != -1
+                            && !c.hasAnyBoosts()
+                            && c.memory.repairing
+            });
+            if (!creeps.length) break;
+
+            creeps[0].memory.healing = true;
+            creeps[0].memory.boost = "XLH20";
+        }while (false);*/
+
+
+
+
+
+        // Ищем ближайший пустой линк, чтобы положить туда ресурсы
+        const link = (() => {
+            if (creep.memory.link_id) {
+                return Game.getObjectById(creep.memory.link_id);
+            }
+
+            const link = creep.pos.findInRange(FIND_MY_STRUCTURES, 2, {
+                filter: (s) => s.structureType == STRUCTURE_LINK
+            });
+            if (link) {
+                creep.memory.link_id = link.id;
+                return link;
+            }
+            return null;
+        })();
+        if (link && link.store && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+            taskResource.fillTarget(creep, link);
+        }
+
+
+
+        /*if (creep.hasAnyBoosts()) {
+            creep.say('Unboost');
+            // Подъезжаем к лаборатории
+            if (creep.pos.x != 27 || creep.pos.y != 33 || creep.pos.roomName != "W9S37") {
+                creep.moveTo(new RoomPosition(27, 33, "W9S37"));
+                return OK;
+            }
+            const labs = creep.pos.findInRange(FIND_MY_STRUCTURES, 2, {
+                filter: (s) => s.structureType == STRUCTURE_LAB && s.cooldown == 0
+            })
+            if (!labs.length) {
+                creep.say("Wait")
+                return OK;
+            }
+            labs[0].unboostCreep(creep);
+        }*/
+
+
+
+
+            if (creep.memory.links_id) {
+                for (const link_id of creep.memory.links_id.split(':')) {
+                    const link = Game.getObjectById(link_id);
+                    if (link && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+                        if (taskResource.fillTarget(creep, link) == OK) return;
+                    }
+                }
+                return;
+            }
+
+            // В каждой комнате есть один Charger, заряжающий пушку
+            const MinEnergy = {"W9S37": 2000, "W8S37": 300}
+            if (creep.memory.defender && creep.room.energyAvailable >= MinEnergy[creep.room.name]) {
+                const energy = creep.store.getUsedCapacity(RESOURCE_ENERGY);
+                if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, energy) == OK) return;
+            }
+
+
+
+
+
+
+            // if (creep.memory.links_id) {
+            //     if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
+            // }
+
+            // Кейсы, когда нужно получить энергию незамедлительно (зарядка башни, слишком мало энергии в спауне)
+            // const rechargeImmediate = (creep.room.name == "W9S37" && creep.room.energyAvailable < 3000)
+            //                       || (creep.room.name == "W9S37" && creep.memory.defender && taskDefend.getClosestEmptyTower(creep, creep.store.getCapacity(RESOURCE_ENERGY)))
+            // if (rechargeImmediate) {
+            //     if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL, STRUCTURE_STORAGE, STRUCTURE_CONTAINER]) == OK) return;
+	        // }
+
+
+
+
+
+
+
+
+
+
+
+            
+
+// exports.link = function() {
+//     // Link transfering
+//     const free = (object) => object.store.getFreeCapacity(RESOURCE_ENERGY);
+//     const used = (object) => object.store.getUsedCapacity(RESOURCE_ENERGY);
+//     do {
+//         // TODO: Auto-links
+//         break;
+        
+//         const source1 = Game.getObjectById("6012bf1aae9c07463174ecc8");
+//         const source2 = Game.getObjectById("6012bfce8bc2745a7918babd");
+//         const target1 = Game.getObjectById("600bc3269095316df5267996");
+//         const target2 = Game.getObjectById("6017d06c80cc147704f4d7b6");
+//         if (!source1 || !source2 || !target1 || !target2) break;
+
+//         // После передачи в target должен быть полный запас ресурсов
+//         if (free(target1) > 500 && used(source1) >= free(target1)) {
+//             source1.transferEnergy(target1);
+//         } else if (free(target1) > 500 && used(source2) >= free(target1)) {
+//             source2.transferEnergy(target1);
+//         }
+//         if (free(target2) > 500 && used(source1) >= free(target2)) {
+//             source1.transferEnergy(target2);
+//         } else if (free(target2) > 500 && used(source2) >= free(target2)) {
+//             source2.transferEnergy(target2);
+//         }
+//     } while (false);
+// }

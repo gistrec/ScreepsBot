@@ -15,7 +15,9 @@
 //    * забирать полный инвентарь или сколько удастся
 // * Добавить rampartDefender'у TOUGH + буст (стоит мало, зато мы его точно не потеряем).
 // * Запрещать крипам двигаться рядом с врагом!!!
-require('prototype');
+require('prototypes/creep');
+require('prototypes/others');
+require('prototypes/room');
 
 const roleMiner     = require('roles/miner');
 const roleScout     = require('roles/scout');

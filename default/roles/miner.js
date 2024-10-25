@@ -11,11 +11,11 @@ const taskResource = require('../tasks/resource');
 
 const configurations = [
     // Когда на старте есть максимум 300 энергии, спавним простого рабочего.
-    {"energy": 250, "miningPower": 0.5, "parts": [WORK, WORK, MOVE]},
+    {"energy": 250, "parts": [WORK, WORK, MOVE]},
     // Когда появились 5 Extension (на 2 уровне контроллера).
-    {"energy": 550, "miningPower": 1.0, "parts": [WORK, WORK, WORK, WORK, WORK, MOVE]},
+    {"energy": 550, "parts": [WORK, WORK, WORK, WORK, WORK, MOVE]},
     // Когда в мнате появляются линки
-    {"energy": 700, "miningPower": 1.0, "parts": [WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE]}
+    {"energy": 700, "parts": [WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE]},
 ];
 
 
@@ -40,10 +40,6 @@ const roleMiner = {
         if (miners.length >= sourcesCount) {
             return true;
         }
-        // const miningPower = miners.reduce((miningPower, miner) => miningPower += (miner.memory.mining_power ? miner.memory.mining_power : 0), 0);
-        // if (miningPower > 1.95) {
-        //    return true;
-        // }
 
         const charger = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "charger"});
         if (miners.length > charger.length) {
@@ -58,10 +54,9 @@ const roleMiner = {
 
         const name = 'Miner' + Game.time;
         const role = 'miner';
-        const mining_power = creepConfiguration["miningPower"];
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, mining_power }, energyStructures});
-        console.log(`[${room.name}] Spawning new ${role} ${name} with ${mining_power} mining power`);
+        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role }, energyStructures});
+        console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },

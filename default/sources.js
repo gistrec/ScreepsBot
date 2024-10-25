@@ -11,7 +11,7 @@ exports.get = function(creep, force = false) {
     if (roomSources.length == 0) {
         return;
     }
-    
+
     const otherRoomMiners = (() => {
         // Для Harvester нужно смотреть по всем крипам
         if (creep.memory.role == 'harvester') {
@@ -50,7 +50,7 @@ exports.get = function(creep, force = false) {
         console.log(`[${creep.room.name}] Miner ${creep.name} will use container at ${container.pos.x}:${container.pos.y}`);
         creep.memory.container_id = container.id;
     }
-    
+
     const link = creep.room.find(FIND_STRUCTURES, {filter: (structure) => {
         return structure.structureType == STRUCTURE_LINK
             && structure.pos.inRangeTo(source, 2);
@@ -71,7 +71,7 @@ exports.getNearest = function(creep) {
     if (creep.memory.source_id) {
         return creep.room.find(FIND_SOURCES, {
             filter: (source) => source.id == creep.memory.source_id}
-        );   
+        );
     }
 
     const source = creep.pos.findClosestByRange(FIND_SOURCES);

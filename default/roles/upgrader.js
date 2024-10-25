@@ -1,8 +1,10 @@
-const utils = require('utils');
+const profiler = require('../screeps-profiler');
 
-const taskCreep     = require('task.creep');
-const taskResource  = require('task.resource');
-const taskStructure = require('task.structure');
+const utils = require('../utils');
+
+const taskCreep     = require('../tasks/creep');
+const taskResource  = require('../tasks/resource');
+const taskStructure = require('../tasks/structure');
 
 
 const configurations = [
@@ -16,7 +18,7 @@ const configurations = [
 const roleUpgrader = {
     rebalanceRepairing: function(room) {
         const MAX_CREEPS_PER_WALL = room.memory.enemy_creeps ? 3 : 1;
-        
+
         const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role === 'upgrader'});
         const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART })
                           .sort((lhv, rhv) => { return rhv.hits - lhv.hits; });
@@ -30,20 +32,22 @@ const roleUpgrader = {
             }
         }
         console.log("Rebalancing upgrader");
-        
+
     },
     spawn: function(room) {
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => /* spawn.name == room.name && */ !spawn.spawning && spawn.isActive()}).shift();
+        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
+        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
         if (!spawn) {
             return true;
         }
-        
+
         const upgraders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "upgrader"});
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
-        
+
         let max_count = creepConfiguration["max_count"];
         let parts = creepConfiguration["parts"];
-        
+
         if (upgraders.length >= max_count) {
             return true;
         }
@@ -52,12 +56,12 @@ const roleUpgrader = {
             console.log(`[${room.name}] Room need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
-        
+
         // Если в комнате больше 50к минералов, бустим...
         const energyCount = [room.terminal, room.storage].reduce((mineralsCount, structure) => {
             return mineralsCount + (structure ? structure.store.getUsedCapacity(RESOURCE_ENERGY) : 0)
         }, 0);
- 
+
         const boost = (room.memory.enemy_creeps) ? "XLH2O" : false; // Boost repair and build
         const role = 'upgrader';
         const name = 'Upgrader' + Game.time;
@@ -97,15 +101,15 @@ const roleUpgrader = {
 
 	        // Если чиним структуру, то пытаемся её дочинить
             if (taskStructure.continueRepearSturcture(creep) == OK) return;
-            
+
             // TODO: Если комнату осаждают, то чиним только RAMPART
 	        const types = [STRUCTURE_ROAD, STRUCTURE_CONTAINER, STRUCTURE_RAMPART];
             if (taskStructure.startRepearClosestStructs(creep, types) == OK) return;
-            
+
             if (creep.room.controller && creep.room.controller.my && creep.room.controller.level != 8) {
                 if (taskStructure.upgradeController(creep) == OK) return;
             }
-            
+
             // Заполняем нюкер.
             if (taskResource.fillClosestStructure(creep, STRUCTURE_NUKER)  == OK) return;
         }else {
@@ -122,10 +126,15 @@ const roleUpgrader = {
             }
 
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE ], RESOURCE_ENERGY) == OK) return;
-            if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_ENERGY) == OK) return;            
+            if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_ENERGY) == OK) return;
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY ], RESOURCE_ENERGY) == OK) return;
         }
 	}
 };
 
+
 module.exports = roleUpgrader;
+
+
+module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.upgrader.spawn");
+module.exports.run = profiler.registerFN(module.exports.run, "role.upgrader.run");

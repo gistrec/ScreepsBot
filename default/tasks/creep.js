@@ -1,4 +1,4 @@
-const taskRoom = require('task.room');
+const taskRoom = require('./room');
 
 /**
  * Проверяем ttl бота.
@@ -29,11 +29,11 @@ exports.checkTTL = function(creep) {
         if (creep.ticksToLive > CREEP_LIFE_TIME - 100) {
             delete creep.memory.renewing;
             taskRoom.finishCreepRenewing(creep.room);
-            
+
             if (creep.memory.role == 'upgrader' && creep.memory.link_id) {
                 creep.memory.boost = "GH2O"
             }
-            
+
             return ERR_NOT_FOUND;
         }
 
@@ -66,7 +66,7 @@ exports.checkTTL = function(creep) {
         }
         creep.transfer(spawn, RESOURCE_ENERGY);
         return OK;
-        
+
     }
 }
 

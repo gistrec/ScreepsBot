@@ -1,6 +1,6 @@
-const taskCreep = require('task.creep')
-const taskBoost = require('task.boost')
-const utils = require('utils')
+const taskCreep = require('../tasks/creep')
+const taskBoost = require('../tasks/boost')
+const utils = require('../utils')
 
 const configurations = [
     {"energy": 1200, "max_count": 2.0, "parts": [TOUGH, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
@@ -24,7 +24,7 @@ const applyRampartsToCostMatrix = function(roomName, costMatrix) {
     if (!Game.rooms[roomName]) {
         return costMatrix;
     }
-    
+
     const ramparts = Game.rooms[roomName].find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART});
     for (const rampart of ramparts) {
         if (costMatrix.get(rampart.pos.x, rampart.pos.y) < COST_MATRIX_UNWALKABLE_WEIGHT) {
@@ -39,12 +39,12 @@ const roleRampartDefender = {
         if (!room.memory.enemy_creeps || room.controller.safeMode) {
             if (!force) return true;
         }
-    
+
         const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning}).shift();
         if (!spawn) {
             return true;
         }
-        
+
         const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "rampart_defender" && (creep.ticksToLive > 150 && !creep.spawning) });
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creeps.length >= creepConfiguration['max_count']) {
@@ -96,12 +96,12 @@ const roleRampartDefender = {
         if (!rampart) {
             return;
         }
-                            
+
         const newRange = rampart.pos.getRangeTo(target);
         if (newRange < oldRange) {
             creep.memory.rampart_id = rampart.id;
         }
-        
+
         if (target) {
             const result = creep.attack(target, );
         }

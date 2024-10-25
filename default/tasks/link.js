@@ -22,6 +22,10 @@ const links = {
     "W11S39": {
         targets: ["636656f7fb9c9699d509416f"],
         sources: ["63665abc6d7b718202fd8734", "6395dfe58688eb2a142e4304"]
+    },
+    "W12S37": {
+        targets: ["66433fdd6bce394246588b58"],
+        sources: ["66434decaa3b0a9e5eced64e", "6644a6b0e7438745422463be"]
     }
 }
 
@@ -29,7 +33,7 @@ exports.transferLinkEnergy = function(room) {
     if (!links[room.name]) {
         return;
     }
-    
+
     const targets_ids = links[room.name]["targets"];
     const sources_ids = links[room.name]["sources"];
     for (const target_id of targets_ids) {
@@ -38,7 +42,7 @@ exports.transferLinkEnergy = function(room) {
             console.log(`[${room.name}] There is not link with id ${target_id}`);
             continue;
         }
-        
+
         if (target.store.getUsedCapacity(RESOURCE_ENERGY) > 200) {
             continue;
         }
@@ -49,11 +53,11 @@ exports.transferLinkEnergy = function(room) {
                 console.log(`[${room.name}] There is not link with id ${source_id}`);
                 continue;
             }
-            
+
             if (source.store.getUsedCapacity(RESOURCE_ENERGY) != 800) {
                 continue;
             }
-            
+
             source.transferEnergy(target);
         }
     }

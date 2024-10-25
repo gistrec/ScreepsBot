@@ -1,8 +1,8 @@
-const utils = require('utils');
+const utils = require('../utils');
 
-const taskCreep     = require('task.creep');
-const taskResource  = require('task.resource');
-const taskStructure = require('task.structure');
+const taskCreep     = require('../tasks/creep');
+const taskResource  = require('../tasks/resource');
+const taskStructure = require('../tasks/structure');
 
 const MAX_PER_ROOM = 1;
 const MAX_PER_DEFENDING_ROOM = 2;
@@ -20,7 +20,7 @@ const configurations = [
 const roleDefender = {
     rebalanceRepairing: function(room) {
         const MAX_CREEPS_PER_WALL = 1;
-        
+
         const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role === 'defender'});
         const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_WALL || s.structureType == STRUCTURE_RAMPART })
                           .sort((lhv, rhv) => { return rhv.hits - lhv.hits; });
@@ -31,14 +31,14 @@ const roleDefender = {
             }
         }
         console.log("Rebalancing defenders");
-        
+
     },
     spawn: function(room) {
         const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => !spawn.spawning && spawn.name == room.name}).shift();
         if (!spawn) {
             return true;
         }
-        
+
         // Нет пушек и барьеров - защитник не нужен.
         if (room.controller.level <= 2) {
             return true;
@@ -48,17 +48,17 @@ const roleDefender = {
         const max_count = (room.memory.defending)
             ? MAX_PER_DEFENDING_ROOM
             : MAX_PER_ROOM
-        
+
         if (defenders.length >= max_count) {
             return true;
         }
-        
+
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`Room ${room.name} need Defender, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
-        
+
         const rampartDamaged = room.find(FIND_MY_STRUCTURES, { filter: (s) => STRUCTURE_RAMPART == s.structureType && (s.hits < s.hitsMax * 0.8) })
         const boost = rampartDamaged.length ? false : "XUH2O";
 
@@ -87,7 +87,7 @@ const roleDefender = {
             // * Заполнить башню
             const minInsufficientEnergy = (creep.room.memory.defending) ? 100 : 200; // В режиме осады всегда заправляем башню энергией.
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, minInsufficientEnergy) == OK) return;
-	    
+	
             // Второстепенная задача:
             // * накачать энергией барьер
             if (taskStructure.continueRepearSturcture(creep) == OK) return;

@@ -1,4 +1,4 @@
-const utils = require('utils');
+const utils = require('../utils');
 
 
 const configurations = [
@@ -8,7 +8,7 @@ const configurations = [
 
 const roleClaimer = {
     spawn: function() {
-        if (Memory.claiming.status !== 'scout') {
+        if (Memory.expansion.status !== 'scout') {
             return true;
         }
 
@@ -49,17 +49,17 @@ const roleClaimer = {
         const expand = Game.flags['Expand'];
 
         // Move to expand room.
-        if (expand.room == undefined || expand.room != creep.room) {   
+        if (expand.room == undefined || expand.room != creep.room) {
             creep.moveTo(expand, {reusePath: 10});
             return;
         }
-        if (!Memory.claiming.roomName || Memory.claiming.status == "scout") {
-            Memory.claiming.roomName = creep.room.name;
-            Memory.claiming.status = 'claimer';
+        if (!Memory.expansion.roomName || Memory.expansion.status == "scout") {
+            Memory.expansion.roomName = creep.room.name;
+            Memory.expansion.status = 'claimer';
             console.log(`Scout find expand room ${creep.room.name}`);
             console.log(`Claiming status change scout->claimer`);
         }
-        
+
         // Idle...
 	}
 };

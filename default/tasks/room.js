@@ -31,7 +31,7 @@ exports.recalculateCostMatrixRewrites = function(room) {
         costMatrixRewrites[room.name] = costMatrixRewrites[room.name].concat(rectangleArea);
     }
     const sources    = room.find(FIND_SOURCES);
-    const containers = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_CONTAINER}); 
+    const containers = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_CONTAINER});
     for (const container of containers) {
         for (const source of sources) {
             if (container.pos.isNearTo(source)) {
@@ -56,7 +56,7 @@ const isRenewingNow = function(room) {
     if (!creep) {
         return ERR_NOT_FOUND;
     }
-    
+
     // Note: for unexpected situations (like creep die)
     if (!creep.memory.renewing || creep.ticksToLive == 0 || creep.ticksToLive == CREEP_LIFE_TIME || creep.hits == 0) {
         creep.memory.renewing = false;
@@ -134,16 +134,6 @@ exports.claimClosest = function(creep) {
             console.log(`[5] Error ${status}`)
             return ERR_NOT_FOUND
     }
-}
-
-exports.getMineral = function(room) {
-    if (room.memory.mineralType === undefined) {
-        const mineral = room.find(FIND_MINERALS).shift();
-
-        room.memory.mineralId   = (mineral.id || null);
-        room.memory.mineralType = (mineral.mineralType || null);
-    }
-    return [room.memory.mineralId, room.memory.mineralType];
 }
 
 /**

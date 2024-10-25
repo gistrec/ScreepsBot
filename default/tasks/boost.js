@@ -1,4 +1,4 @@
-const taskResource = require('task.resource');
+const taskResource = require('./resource');
 
 /**
  * Проверяем можно ли забустить крипа (есть ли часть + у неё нет буста).
@@ -24,26 +24,26 @@ exports.hasBoost = function(creep, resourceType) {
  * Если у крипа установлена переменная boost, то пытаемся забустить крипа минералом
  * Алгоритм:
  * 1. Получаем лабораторию, с которой будем работать
- * 
+ *
  * 2. Пока в лаборатории не хватает энергии, то заполняем её энергией:
  *    2.1. Выкладываем все ресурсы в хранилище - нужно, чтобы освободить трюм
  *    2.2. Получаем энергию в хранилище
  *    2.3. Кладем её в лабораторию
- * 
+ *
  * 3. Выкидываем лишние ресурсы из лаборатории.
- * 
+ *
  * 4. Пока в лаборатории не хватает минерала, то заполняем его минералом:
  *    4.1. Выкладываем все ресурсы в хранилище - нужно, чтобы освободить трюм
  *    4.2. Получаем минерал в хранилище
  *    4.3. Кладем его в лабораторию
- * 
+ *
  * 5. Бустим крипа
  */
 exports.checkBoost = function(creep) {
     if (!creep.memory.boost && creep.memory.boost_queue) {
         creep.memory.boost = creep.memory.boost_queue.shift();
     }
-    
+
     if (!creep.memory.boost || creep.spawning) {
         return ERR_NOT_FOUND;
     }
@@ -61,14 +61,14 @@ exports.checkBoost = function(creep) {
         });
         return lab;
     })();
-    
+
     if (!lab) {
         console.log(`[${creep.room.name}][Boost] Not found lab for boost creep ${creep.name}. Boost task was deleted.`);
         delete creep.memory.boost;
         return ERR_NOT_FOUND;
     }
     creep.memory.lab_id = lab.id;
-    
+
     // Получаем основные данные, с которыми будем работать
     const resourceType = creep.memory.boost;
     const partType = _.findKey(BOOSTS, boost => boost[resourceType]);
@@ -89,7 +89,7 @@ exports.checkBoost = function(creep) {
     // 2. Пока в лаборатории не хватает энергии, то заполняем её энергией
     const totalEnergy = LAB_BOOST_ENERGY * partsCount;                 // Количество энергии, необходимой для буста крипа
     const labEnergy   = lab.store.getUsedCapacity(RESOURCE_ENERGY);    // Количество энергии в лаборатории
-    const creepEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);  // Количество энергии в крипе 
+    const creepEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);  // Количество энергии в крипе
     console.log(`Energy: [${creepEnergy} + ${labEnergy} / ${totalEnergy}]`);
     if (labEnergy < totalEnergy) {
         creep.say("⚡Fill lab")
@@ -99,7 +99,7 @@ exports.checkBoost = function(creep) {
             taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL);
             return OK;
         }
-        
+
         // Загружаем ресурсы в трюм пока:
         // 1. В трюме есть место
         // 2. Сумма ресурсов в крипе и лаборатории меньше, чем нужно для буста
@@ -112,7 +112,7 @@ exports.checkBoost = function(creep) {
         }
         return OK;
     }
-    
+
     // 3. Выкидываем лишние ресурсы из лаборатории:
     // * Если в крипе лежат 'левые ресурсы'
     // * Если в лаборатории лежат 'левые ресурсы'
@@ -141,7 +141,7 @@ exports.checkBoost = function(creep) {
             taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE);
             return OK;
         }
-        
+
         // Загружаем ресурсы в трюм пока:
         // 1. В трюме есть место
         // 2. Сумма ресурсов в крипе и лаборатории меньше, чем нужно для буста
@@ -198,7 +198,7 @@ exports.checkUnboost = function(creep) {
     if (!creep.memory.unboost || creep.spawning) {
         return ERR_NOT_FOUND;
     }
-    
+
     // 1. Получаем лабораторию, с которой будем работать.
     const lab = (() => {
         if (creep.memory.lab_id) {
@@ -216,13 +216,13 @@ exports.checkUnboost = function(creep) {
         });
         return lab;
     })();
-    
+
     if (!lab) {
         console.log(`Not found lab for unboost creep ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
         return ERR_NOT_FOUND;
     }
-    
+
     const container = (() => {
         if (creep.memory.container_id) {
             return Game.getObjectById(creep.memory.container_id);
@@ -235,18 +235,18 @@ exports.checkUnboost = function(creep) {
             }
         }
     })();
-    
+
     if (!container) {
         console.log(`Not found container for unboost creep ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
-        return ERR_NOT_FOUND; 
+        return ERR_NOT_FOUND;
     }
-    
+
     if (!creep.pos.isEqualTo(container)) {
         creep.moveTo(container);
         return OK;
     }
-    
+
     lab.unboostCreep(creep);
     delete creep.memory.unboost;
     creep.memory.unboosted = false;

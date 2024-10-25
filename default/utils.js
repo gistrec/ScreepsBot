@@ -12,7 +12,7 @@ function getEnergyCapacityAvailable(room, spawn = null) {
         return room.energyCapacityAvailable;
     } else {
         return room.energyAvailable;
-    } 
+    }
 }
 
 // TODO: Check miner and charger exists - we can't spawn creep without energy in estansion!
@@ -38,12 +38,12 @@ exports.getEnergyStructures = function(room, spawn) {
     const sortByRange = ((first, second) => {
         const rangeFirst  = spawn.pos.getRangeTo(first);
         const rangeSecond = spawn.pos.getRangeTo(second);
-        
+
         if (rangeFirst < rangeSecond) return -1;
         if (rangeFirst > rangeSecond) return  1;
         return 0;
     });
-    
+
     return [
         // Сначала выкачиваем энергию из экстеншенов.
         ...room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_EXTENSION && s.isActive()}).sort(sortByRange),

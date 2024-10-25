@@ -1,6 +1,6 @@
-const taskCreep     = require('task.creep');
-const taskResource  = require('task.resource');
-const taskStructure = require('task.structure');
+const taskCreep     = require('../tasks/creep');
+const taskResource  = require('../tasks/resource');
+const taskStructure = require('../tasks/structure');
 
 const roleSafeModeGenerator = {
     /** @param {Creep} creep **/

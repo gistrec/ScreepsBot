@@ -1,8 +1,10 @@
-const utils = require('utils');
+const profiler = require('../screeps-profiler');
 
-const taskCreep     = require('task.creep');
-const taskResource  = require('task.resource');
-const taskStructure = require('task.structure');
+const utils = require('../utils');
+
+const taskCreep     = require('../tasks/creep');
+const taskResource  = require('../tasks/resource');
+const taskStructure = require('../tasks/structure');
 
 
 
@@ -11,28 +13,29 @@ const MAX_CREEPS_PER_ROOM = 1;
 
 const roleUpgrader = {
     spawn: function(room) {
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => /* spawn.name == room.name && */ !spawn.spawning && spawn.isActive()}).shift();
+        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
+        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
         if (!spawn) {
             return true;
         }
-        
+
         const upgraders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "controller_upgrader"});
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
-        
-        
+
+
         if (upgraders.length >= MAX_CREEPS_PER_ROOM) {
             return true;
         }
 
-        parts = [WORK,  WORK,  WORK,  WORK,  WORK, 
-                 WORK,  WORK,  WORK,  WORK,  WORK, 
-                 WORK,  WORK,  WORK,  WORK,  WORK, 
-                 WORK,  WORK,  WORK,  WORK,  WORK, 
+        parts = [WORK,  WORK,  WORK,  WORK,  WORK,
+                 WORK,  WORK,  WORK,  WORK,  WORK,
+                 WORK,  WORK,  WORK,  WORK,  WORK,
+                 WORK,  WORK,  WORK,  WORK,  WORK,
                  CARRY, CARRY, CARRY, CARRY,
                  MOVE,  MOVE,  MOVE,  MOVE]
-        
+
         const boost = (room.name == "W8S36") ? "XLH2O" : false; // Boost repair and build
-        const boost = false;
         const name = 'ControllerUpgrader' + Game.time;
         const role = 'controller_upgrader';
         spawn.spawnCreep(parts, name, {memory: {role, boost}, energyStructures: [
@@ -60,4 +63,9 @@ const roleUpgrader = {
 	}
 };
 
+
 module.exports = roleUpgrader;
+
+
+module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.controllerUpgrader.spawn");
+module.exports.run = profiler.registerFN(module.exports.run, "role.controllerUpgrader.run");

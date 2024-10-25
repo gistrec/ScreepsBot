@@ -1,4 +1,4 @@
-const taskRoom = require('task.room');
+const taskRoom = require('./room');
 
 // Структуры, которые ремонтируются каким-либо ботом
 exports.repearing_structures = [];
@@ -94,7 +94,7 @@ exports.repearTarget = function(creep, target) {
  */
 exports.startRepearClosestStructs = function(creep, types, full_health = false) {
     // Дорога не относится к моим структурам...
-    
+
     const target = creep.pos.findClosestByRange(FIND_STRUCTURES, {
         filter: (s) => types.includes(s.structureType) // Чиним заданный тип
                     && exports.repearing_structures.includes(s.id) == false // Структура еще никем не чинится

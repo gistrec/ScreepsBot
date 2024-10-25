@@ -1,8 +1,8 @@
 const sources      = require('sources');
 
-const taskCreep     = require('task.creep');
-const taskStructure = require('task.structure');
-const taskResource = require('task.resource');
+const taskCreep     = require('../tasks/creep');
+const taskStructure = require('../tasks/structure');
+const taskResource = require('../tasks/resource');
 
 
 const MAX_PER_GAME = 6;
@@ -39,7 +39,7 @@ const roleHarvester = {
         if (creep.hits != creep.hitsMax) {
             creep.memory.recycling = true;
         }
-        
+
         // Если бот обновляет ttl
         if (taskCreep.checkTTL(creep) == OK) return;
 
@@ -72,7 +72,7 @@ const roleHarvester = {
                 });
                 return;
             }
-            
+
             // Основная задача:
             // * Добывать ресурсы
             const target = sources.get(creep);

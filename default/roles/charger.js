@@ -1,7 +1,9 @@
-const utils = require('utils');
+const profiler = require('../screeps-profiler');
 
-const taskResource = require('task.resource');
-const taskCreep  = require('task.creep');
+const utils = require('../utils');
+
+const taskResource = require('../tasks/resource');
+const taskCreep  = require('../tasks/creep');
 
 
 const configurations = [
@@ -21,28 +23,31 @@ function findStructureNearSpawn(spawn, structureType) {
 
 const roleCharger = {
     spawn: function(room, force = false) {
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => /* spawn.name == room.name && */ !spawn.spawning && spawn.isActive()}).shift();
+        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
+        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
         if (!spawn) {
             return true;
         }
-        
+
         const charger = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "charger"});
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (charger.length >= creepConfiguration['max_count']) {
             if (!force) return true;
         }
-        
+
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`Room ${room.name} need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
-        
+
+        // TODO: Мб искать рядом с терминалом?
         // Ищем link рядом со спавном
-        const link_id     = findStructureNearSpawn(spawn, STRUCTURE_LINK);
-        const storage_id  = findStructureNearSpawn(spawn, STRUCTURE_STORAGE);
-        const factory_id  = findStructureNearSpawn(spawn, STRUCTURE_FACTORY);
-        const terminal_id = findStructureNearSpawn(spawn, STRUCTURE_TERMINAL);
-        
+        const link_id     = findStructureNearSpawn(room.terminal ? room.terminal : spawn, STRUCTURE_LINK);
+        const storage_id  = findStructureNearSpawn(room.terminal ? room.terminal : spawn, STRUCTURE_STORAGE);
+        const factory_id  = findStructureNearSpawn(room.terminal ? room.terminal : spawn, STRUCTURE_FACTORY);
+        const terminal_id = findStructureNearSpawn(room.terminal ? room.terminal : spawn, STRUCTURE_TERMINAL);
+
         const role = 'charger';
         const name = 'Charger' + Game.time;
         const energyStructures = utils.getEnergyStructures(room, spawn);
@@ -58,7 +63,7 @@ const roleCharger = {
         if (creep.fatigue != 0) return;
 
         // Если бот лечится.
-        if (taskCreep.checkTTL(creep) == OK) return;
+        // if (taskCreep.checkTTL(creep) == OK) return;
 
         // Проверяем нужно ли переместить ресурсы в Factory
         if (taskResource.disassembleResource(creep) == OK) return;
@@ -85,7 +90,7 @@ const roleCharger = {
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, 350)   == OK) return;
             if (taskResource.fillClosestStructure(creep, STRUCTURE_LAB)          == OK) return;
             // if (taskResource.fillClosestStructure(creep, STRUCTURE_FACTORY, 200) == OK) return;
-            
+
             // TODO: Сделать так, чтобы в терминале всегда было 30к энергии для резерва
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL)  == OK) return;
             if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)   == OK) return;
@@ -104,7 +109,7 @@ const roleCharger = {
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER]) == OK) return;
             }
-            
+
             if (creep.room.memory.enemy_creeps && !creep.room.controller.safeMode) {
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE]) == OK) return;
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY]) == OK) return;
@@ -115,3 +120,7 @@ const roleCharger = {
 };
 
 module.exports = roleCharger;
+
+
+module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.charger.spawn");
+module.exports.run = profiler.registerFN(module.exports.run, "role.charger.run");

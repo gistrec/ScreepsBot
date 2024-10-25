@@ -4,7 +4,7 @@ exports.checkStatus = function(room) {
     if (!controller || !controller.owner || !controller.my) {
         return true;
     }
-    
+
     // Учитываем только опасных вражеских крипов
     // Т.к. при LevelUp'е комнаты Rampart'ы тригерят DefendingMode
     // Думаю, нужно как-то обработать этот момент.
@@ -38,7 +38,7 @@ exports.checkStatus = function(room) {
             room.controller.activateSafeMode();
         }
     }
-    
+
     // Если существует хотя бы одна угроза, то активируем защитный режим
     // В этом режиме создаются Defender'ы
     if (rampartDamaged.length || spawnDamaged.length || enemyCreeps.length || controller.safeMode) {
@@ -68,8 +68,8 @@ exports.fireTower = function(room) {
             tower.heal(creep);
             continue;
         }
-        
-        
+
+
         if (!room.controller.safeMode) {
             // Временная мера
             let enemy = tower.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {
@@ -100,11 +100,11 @@ exports.fireTower = function(room) {
                 filter: (s) => (s.structureType == STRUCTURE_ROAD || s.structureType == STRUCTURE_CONTAINER)
                             && s.hitsMax - s.hits > 800 // При починке энергия не должна теряться
             });
-            
+
             //if (room.name == "W8S36") {
             //    damaged = Game.getObjectById("632283e9c4ac9770ab84b0e5");
             //}
-            
+
             if (damaged) {
                 tower.repair(damaged);
                 continue;
@@ -117,7 +117,7 @@ exports.fireTower = function(room) {
                 //    damaged = Game.getObjectById("62485395161fa4366cdd5a38");
                 //    tower.repair(damaged);
                 //}
-                
+
             }
         }
     }

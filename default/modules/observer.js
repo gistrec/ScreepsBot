@@ -45,8 +45,10 @@ const get_observers = function() {
 }
 
 exports.process = function() {
+    return;
+
     // Обрабатываем предыдущий результат.
-    const room_name = rooms[current_room_index]; 
+    const room_name = rooms[current_room_index];
     const room = Game.rooms[room_name];
     if (room) {
         const power_bank = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_POWER_BANK}).shift();
@@ -57,7 +59,7 @@ exports.process = function() {
             delete power_banks[room_name];
         }
     }
-    
+
     // Обозреваем комнату.
     current_room_index = (current_room_index < rooms.length)
         ? current_room_index + 1

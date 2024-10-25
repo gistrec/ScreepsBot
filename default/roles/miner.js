@@ -1,7 +1,9 @@
-const utils        = require('utils');
-const sources      = require('sources');
+const profiler = require('../screeps-profiler');
 
-const taskResource = require('task.resource');
+const utils        = require('../utils');
+const sources      = require('../sources');
+
+const taskResource = require('../tasks/resource');
 
 
 // 1 WORK part - 2 energy per tick
@@ -22,12 +24,14 @@ const roleMiner = {
         if (room.memory.enemy_creeps && !room.controller.safeMode) {
             return true;
         }
-        
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => /* spawn.name == room.name && */ !spawn.spawning && spawn.isActive()}).shift();
+
+        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
+        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
         if (!spawn) {
             return true;
         }
-        
+
         // На начальном уровне удваиваем количество майнеров.
         const sourcesCount = (room.energyCapacityAvailable < 550)
             ? 2 * room.find(FIND_SOURCES).length
@@ -45,13 +49,13 @@ const roleMiner = {
         if (miners.length > charger.length) {
             return true;
         }
-        
+
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Room need Miner, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
-        
+
         const name = 'Miner' + Game.time;
         const role = 'miner';
         const mining_power = creepConfiguration["miningPower"];
@@ -73,17 +77,12 @@ const roleMiner = {
             creep.moveTo(container);
             return;
         }
-        
+
         // Поднимаем ресурсы из контейнера.
         if (container && container.store.getUsedCapacity(RESOURCE_ENERGY) > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
             taskResource.withdrawTarget(creep, container);
         }
-        
-        const energy = creep.room.lookForAt(LOOK_ENERGY, creep.pos).shift()
-        if (energy && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-            const r = taskResource.pickupTarget(creep, energy); 
-        }
-        
+
         // Передаем ресурсы линку.
         const link = Game.structures[creep.memory.link_id];
         if (link && !creep.store.getFreeCapacity(RESOURCE_ENERGY) && creep.store.getCapacity(RESOURCE_ENERGY) && link.store.getFreeCapacity(RESOURCE_ENERGY)) {
@@ -97,4 +96,9 @@ const roleMiner = {
 	}
 };
 
+
 module.exports = roleMiner;
+
+
+module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.miner.spawn");
+module.exports.run = profiler.registerFN(module.exports.run, "role.miner.run");

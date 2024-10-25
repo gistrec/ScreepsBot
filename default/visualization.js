@@ -1,11 +1,10 @@
 let statuses = {}
 
-exports.room = function(room) {
+visualiseRoom = function(room) {
     if (!statuses.hasOwnProperty(room.name) && room.controller) {
         statuses[room.name] = {
             start: Game.time,
             progress: room.controller.progress,
-            
         }
     }
 
@@ -27,6 +26,11 @@ exports.room = function(room) {
         room.visual.text("⚔️ Defending mode: Off", pos.x + 1, pos.y + 3, {color: 'green', align: 'left'})
     }
 
+    const expand = Game.flags["Expand"]
+    if (expand) {
+        room.visual.rect(expand.pos.x - 6, expand.pos.y - 6, 12, 12, {fill: 'transparent', stroke: 'green', lineStyle: 'dotted', opacity: 0.7});
+    }
+
     const my_towers = room.find(FIND_MY_STRUCTURES,  {filter: (s) => s.structureType == STRUCTURE_TOWER});
     for (const tower of my_towers) {
         room.visual
@@ -34,7 +38,7 @@ exports.room = function(room) {
             .text('600', tower.pos.x - 5, tower.pos.y + 5, { color: 'red', font: 0.5, opacity: 0.3 })
             .text('600', tower.pos.x + 5, tower.pos.y - 5, { color: 'red', font: 0.5, opacity: 0.3 })
         // room.visual.rect(tower.pos.x - 15, tower.pos.y - 15, 30, 30, { fill: 'transparent', stroke: 'green', lineStyle: 'dotted' });
-        
+
         /*let radius = 5;
         let damage = 600;
         while (radius <= 20) {
@@ -94,13 +98,13 @@ exports.room = function(room) {
     for (const enemy of enemies) {
         const heal = enemy.body.filter(part => part.type == HEAL).reduce((damage, part) => damage + HEAL_POWER * (part.boost ? BOOSTS[HEAL][part.boost][HEAL] : 1), 0);
         const ranged_heal = enemy.body.filter(part => part.type == HEAL).reduce((damage, part) => damage + RANGED_HEAL_POWER * (part.boost ? BOOSTS[HEAL][part.boost]["rangedHeal"] : 1), 0);
-        
+
         const attack = enemy.body.filter(part => part.type == ATTACK).reduce((damage, part) => damage + ATTACK_POWER * (part.boost ? BOOSTS[ATTACK][part.boost][ATTACK] : 1), 0);
         const ranged_attack = enemy.body.filter(part => part.type == RANGED_ATTACK).reduce((damage, part) => damage + RANGED_ATTACK_POWER * (part.boost ? BOOSTS[RANGED_ATTACK][part.boost]["rangedAttack"] : 1), 0);
         room.visual.text(attack + "-" + ranged_attack, enemy.pos.x, enemy.pos.y - 0.1, {color: 'red', font: 0.4, opacity: 1})
         room.visual.text(heal + "-" + ranged_heal, enemy.pos.x, enemy.pos.y + 0.5, {color: 'green', font: 0.4, opacity: 1})
     }
-    
+
     const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART || s.structureType == STRUCTURE_WALL});
     const hitsMax = RAMPART_HITS_MAX[controller.level];
     for (const wall of walls) {
@@ -108,7 +112,7 @@ exports.room = function(room) {
     }
 }
 
-exports.map = function(room) {
+visualiseMap = function(room) {
     if (!room.controller || !room.controller.owner || room.controller.owner.username != "gistrec") {
         return;
     }
@@ -120,5 +124,14 @@ exports.map = function(room) {
         Game.map.visual.text("⚔️ On", new RoomPosition(0, 47, room.name), {color: '#FF0000', align: 'left', fontSize: 6})
     } else {
         Game.map.visual.text("⚔️ Off", new RoomPosition(0, 47, room.name), {color: '#00FF00', align: 'left', fontSize: 6})
+    }
+}
+
+exports.process = function() {
+    for (const roomName in Game.rooms) {
+        const room = Game.rooms[roomName];
+
+        visualiseRoom(room);
+        visualiseMap(room);
     }
 }

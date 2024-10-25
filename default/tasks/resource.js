@@ -1,4 +1,5 @@
-const taskRoom = require('task.room');
+const taskRoom = require('./room');
+
 
 /**
  * Функция проверяет может ли бот совершать основную задачу
@@ -16,7 +17,6 @@ exports.chechHarvesting = function(creep) {
         creep.memory.harvesting = true;
     }
 }
-
 
 
 exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
@@ -47,17 +47,18 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
             creep.moveTo(target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
-                
+
                 maxRooms: 1
             });
             return OK;
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[fillTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][fillTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
+
 
 /**
  * Заполняем ближайшую незаполненную структуру.
@@ -76,7 +77,6 @@ exports.fillClosestStructure = function(creep, structure, count = 0) {
 
     return exports.fillTarget(creep, target);
 }
-
 
 
 exports.pickupTarget = function(creep, target) {
@@ -102,10 +102,11 @@ exports.pickupTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[pickupTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][pickupTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
+
 
 /**
  * Поднимаем ближайшие ресурсы
@@ -122,6 +123,7 @@ exports.pickupClosestResources = function(creep, types, full_cargo = false) {
 
     return exports.pickupTarget(creep, target);
 }
+
 
 /**
  * Добываем ресурсы
@@ -151,10 +153,11 @@ exports.harvestTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[harvestTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][harvestTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND
     }
 }
+
 
 /**
  * Использовать с осторожностью, т.к. функция не учитывает балансировку
@@ -184,7 +187,7 @@ exports.withdrawTarget = function(creep, target, resourceType = RESOURCE_ENERGY,
     }
 
     const status = creep.withdraw(target, resourceType, resourceCount);
-    
+
     switch (status) {
         case OK:
         case ERR_BUSY: // Бот еще спавнится
@@ -203,10 +206,11 @@ exports.withdrawTarget = function(creep, target, resourceType = RESOURCE_ENERGY,
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[withdrawTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][withdrawTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
+
 
 /**
  * Получаем ресурсы из ближайшего хранилища.
@@ -237,7 +241,7 @@ exports.withdrawClosestResources = function(creep, structures, resourceType = RE
 exports.disassembleResource = function(creep) {
     const resourceType = creep.memory.disassemble;
     if (!resourceType) return ERR_NOT_FOUND;
-    
+
     // Выкидываем лишние ресурсы крипа.
     if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resourceType)) {
         creep.say(`Remove extra resource`);
@@ -245,7 +249,7 @@ exports.disassembleResource = function(creep) {
         if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return OK;
         return OK;
     }
-    
+
     const factory = creep.room.find(FIND_MY_STRUCTURES, {filter: s => s.structureType == STRUCTURE_FACTORY})[0];
     if (factory.store.getFreeCapacity() <= 5000) {
         if (creep.store.getUsedCapacity() != 0) {
@@ -257,8 +261,8 @@ exports.disassembleResource = function(creep) {
         }
         return OK;
     }
-    
-    
+
+
     if (creep.store.getFreeCapacity() > 0) {
         const result = exports.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_TERMINAL], resourceType);
         if (result == ERR_NOT_FOUND) {
@@ -272,12 +276,13 @@ exports.disassembleResource = function(creep) {
     return OK;
 }
 
+
 exports.transferResource = function(creep) {
     const task = creep.memory.transfer;
     if (!task) return ERR_NOT_FOUND;
-    
+
     const {resource_type, source_id, target_id, max_resource_count_in_target} = task;
-    
+
     // Выкидываем лишние ресурсы крипа.
     if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resource_type)) {
         creep.say(`Remove extra resource`);
@@ -285,7 +290,7 @@ exports.transferResource = function(creep) {
         if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
         return OK;
     }
-    
+
     const source = Game.getObjectById(source_id)
     const target = Game.getObjectById(target_id);
     if (!source || !target) {
@@ -305,18 +310,18 @@ exports.transferResource = function(creep) {
         }
         return OK;
     }
-    
+
     exports.chechHarvesting(creep);
     if(creep.store.getUsedCapacity(resource_type)) {
         exports.fillTarget(creep, target, resource_type);
         return OK;
     } else {
         const targetResourceCount = target.store.getUsedCapacity(resource_type);
-        if (max_resource_count_in_target != undefined && targetResourceCount > max_resource_count_in_target) {
+        if (max_resource_count_in_target && targetResourceCount > max_resource_count_in_target) {
             console.log(`[${creep.room.name}] Transfer of ${resource_type} using the creep ${creep.name} is completed - the target has ${targetResourceCount} resources.`);
             delete creep.memory.transfer;
         }
-        
+
         const creepCapacity = creep.store.getFreeCapacity();
         const sourceResourceCount = source.store.getUsedCapacity(resource_type);
         if (!sourceResourceCount) {

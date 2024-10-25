@@ -1,7 +1,7 @@
-const utils = require('utils')
+const utils = require('../utils')
 
-const taskCreep = require('task.creep')
-const taskBoost = require('task.boost')
+const taskCreep = require('../tasks/creep')
+const taskBoost = require('../tasks/boost')
 
 const MAX_PER_ROOM = 0;
 
@@ -29,8 +29,8 @@ const roleWarrior = {
             creep.memory.boost = "XUH2O";
             return;
         }
-        
-        
+
+
         if (taskBoost.canBoost(creep, "XZHO2") && !taskBoost.hasBoost(creep, "XZHO2")) {
             console.log("Need XZHO2")
             creep.memory.boost = "XZHO2";
@@ -46,7 +46,7 @@ const roleWarrior = {
             creep.memory.boost = "XGHO2";
             return;
         }*/
-        
+
         /*if (creep.room.name !== target_location.roomName()) {
             creep.moveTo(target_location.roomPosition(), {
                 visualizePathStyle: {
@@ -84,7 +84,7 @@ const roleWarrior = {
                 filter: (s) => s.structureType != STRUCTURE_CONTROLLER
             });
             if (structures) return structures;
-            
+
             if (creep.room.controller && !creep.room.controller.my) {
                 const structures = creep.pos.findClosestByRange(FIND_STRUCTURES, {
                     filter: (s) => s.structureType != STRUCTURE_CONTROLLER && s.structureType != STRUCTURE_WALL
@@ -109,9 +109,9 @@ const roleWarrior = {
                     costMatrix.set(39, 31, 999);
                 },
             });
-            
+
             //if (target.structureType) {
-            //    creep.attack(target); 
+            //    creep.attack(target);
             //    creep.dismantle(target)
             //}else {
                 const result = creep.attack(target);

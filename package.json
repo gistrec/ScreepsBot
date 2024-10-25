@@ -1,5 +1,5 @@
 {
-  "name": "Screep Pull",
+  "name": "screeps-bot",
   "version": "1.0.0",
   "description": "",
   "main": "pull.js",
@@ -7,7 +7,6 @@
   "dependencies": {
     "@types/screeps": "^3.3.8",
     "fs": "0.0.1-security",
-    "getenv": "^1.0.0",
     "grunt": "^1.6.1",
     "grunt-contrib-clean": "^2.0.1",
     "grunt-contrib-copy": "^1.0.0",

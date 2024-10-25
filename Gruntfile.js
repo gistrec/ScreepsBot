@@ -1,19 +1,14 @@
-const getenv = require('getenv')
-
-
 module.exports = function(grunt) {
     grunt.loadNpmTasks('grunt-screeps');
     grunt.loadNpmTasks('grunt-contrib-clean')
     grunt.loadNpmTasks('grunt-contrib-copy')
 
     grunt.initConfig({
-        // Push all files to screeps.
         screeps: {
             options: {
-                email: 'gistrec@mail.ru',
-                token: getenv('SCREEPS_TOKEN'),
+                email: process.env.SCREEPS_EMAIL,
+                token: process.env.SCREEPS_TOKEN,
                 branch: 'default',
-                // server: 'season'
             },
             dist: {
                 src: ['build/step_2/*']
@@ -56,7 +51,6 @@ module.exports = function(grunt) {
         grunt.file.recurse('./build/step_1', ReplaceImports);
     });
 
-    // gObj = global grunt object
     let ReplaceImports = function(abspath, rootdir, subdir, filename) {
         if (abspath.match(/.js$/) == null) {
             return;

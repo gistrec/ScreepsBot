@@ -11,11 +11,14 @@ const taskResource = require('../tasks/resource');
 
 const configurations = [
     // Когда на старте есть максимум 300 энергии, спавним простого рабочего.
-    {"energy": 250, "parts": [WORK, WORK, MOVE]},
+    {"energy": 250,  "miningPower": "1", "parts": [WORK, WORK, MOVE]},
     // Когда появились 5 Extension (на 2 уровне контроллера).
-    {"energy": 550, "parts": [WORK, WORK, WORK, WORK, WORK, MOVE]},
+    {"energy": 550,  "miningPower": "1", "parts": [WORK, WORK, WORK, WORK, WORK, MOVE]},
     // Когда в мнате появляются линки
-    {"energy": 700, "parts": [WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE]},
+    {"energy": 700,  "miningPower": "1", "parts": [WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE]},
+    // Для сохранения CPU - будем майнить ресурсы раз в 2 тика
+    {"energy": 5000, "miningPower": "2", "parts": [WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE, MOVE, MOVE]},
+    // Для сохранения CPU - будем майнить ресурсы раз в 4 тика
 ];
 
 
@@ -54,17 +57,15 @@ const roleMiner = {
 
         const name = 'Miner' + Game.time;
         const role = 'miner';
+        const miningPower = creepConfiguration["miningPower"];
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role }, energyStructures});
+        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, miningPower }, energyStructures});
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },
     run: function(creep) {
         if (creep.fatigue != 0) return;
-
-        // Если бот лечится
-        // if (taskCreep.checkTTL(creep) == OK) return;
 
         // Двигаемся к контейнеру.
         const container = Game.getObjectById(creep.memory.container_id);
@@ -73,21 +74,25 @@ const roleMiner = {
             return;
         }
 
+        if (creep.memory.miningPower && (Game.time % creep.memory.miningPower != 0)) {
+            return;
+        }
+
         // Поднимаем ресурсы из контейнера.
         if (container && container.store.getUsedCapacity(RESOURCE_ENERGY) > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
             taskResource.withdrawTarget(creep, container);
-        }
-
-        // Передаем ресурсы линку.
-        const link = Game.structures[creep.memory.link_id];
-        if (link && !creep.store.getFreeCapacity(RESOURCE_ENERGY) && creep.store.getCapacity(RESOURCE_ENERGY) && link.store.getFreeCapacity(RESOURCE_ENERGY)) {
-            taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
         }
 
         // Основная задача:
         // * Добывать ресурсы
         const target = sources.get(creep);
         taskResource.harvestTarget(creep, target);
+
+        // Передаем ресурсы линку.
+        const link = Game.structures[creep.memory.link_id];
+        if (link && !creep.store.getFreeCapacity(RESOURCE_ENERGY) && creep.store.getCapacity(RESOURCE_ENERGY) && link.store.getFreeCapacity(RESOURCE_ENERGY)) {
+            taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
+        }
 	}
 };
 

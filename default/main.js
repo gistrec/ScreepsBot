@@ -96,9 +96,9 @@ function updateRoom(room) {
 }
 
 loop = function () {
-    if (Game.cpu.bucket >= 10000) try {
-        Game.cpu.generatePixel()
-    } catch (err) { err.log() };
+    // if (Game.cpu.bucket >= 10000) try {
+    //     Game.cpu.generatePixel()
+    // } catch (err) { err.log() };
 
     try { moduleLab.process();             } catch (err) { err.log() }
     try { moduleBuild.process();           } catch (err) { err.log() }

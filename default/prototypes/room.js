@@ -31,7 +31,6 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
     console.log(`[${this.name}] Creep ${creep.name} will transfer ${resource_type} resource`);
 }
 
-
 Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEGER) {
     if (!this.terminal) {
         console.log(`[${this.name}] Terminal not found`);
@@ -58,6 +57,19 @@ Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEG
     console.log(`[${this.name}] Send ${amount} energy to ${target_room} with transaction cost ${cost} (${costRatio}%)`);
 }
 
+Room.prototype.getStoredEnergy = function() {
+    let count = 0;
+    if (this.storage) {
+        count += this.storage.store.getUsedCapacity(RESOURCE_ENERGY);
+    }
+    if (this.terminal) {
+        count += this.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
+    }
+    if (this.getFactory()) {
+        count += this.getFactory().store.getUsedCapacity(RESOURCE_ENERGY);
+    }
+    return count;
+}
 
 Room.prototype.getMineral = function() {
     if (this.memory.mineralType === undefined) {
@@ -69,7 +81,6 @@ Room.prototype.getMineral = function() {
 
     return [this.memory.mineralId, this.memory.mineralType];
 }
-
 
 Room.prototype.getFactory = function() {
     if (this.memory.factoryId === undefined) {

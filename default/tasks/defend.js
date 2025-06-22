@@ -78,7 +78,6 @@ exports.fireTower = function(room) {
             if (enemy){
                 // if (Game.time % 20 <= 5) {
                     tower.attack(enemy);
-                    // tower.attack(Game.getObjectById("6395d14391ece59d09df7980"))
                     continue;
                 // }
             }
@@ -88,7 +87,6 @@ exports.fireTower = function(room) {
             filter: (s) => (s.structureType == STRUCTURE_RAMPART || s.structureType == STRUCTURE_WALL)
                         && (s.hits < 15000 /* || (s.room.name == "W9S39" && s.hits != s.hitsMax && Math.random() > 0.9) */)
         });
-        // rampart = Game.getObjectById("632295ea0ac7a36e981e1a72")
         if (rampart) {
             tower.repair(rampart);
             continue;
@@ -101,23 +99,9 @@ exports.fireTower = function(room) {
                             && s.hitsMax - s.hits > 800 // При починке энергия не должна теряться
             });
 
-            //if (room.name == "W8S36") {
-            //    damaged = Game.getObjectById("632283e9c4ac9770ab84b0e5");
-            //}
-
             if (damaged) {
                 tower.repair(damaged);
                 continue;
-            } else{
-                //if (room.name == "W8S38") {
-                //    damaged = Game.getObjectById("6290bb6cf0bf823246a8a412");
-                //    tower.repair(damaged);
-                //}
-                //if (room.name == "W9S37") {
-                //    damaged = Game.getObjectById("62485395161fa4366cdd5a38");
-                //    tower.repair(damaged);
-                //}
-
             }
         }
     }

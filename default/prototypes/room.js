@@ -87,7 +87,7 @@ Room.prototype.getFactory = function() {
         // TODO: Add cache - don't look every time
         const factory = this.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_FACTORY }).shift();
         if (factory) {
-            this.memory.factoryId == factory.id;
+            this.memory.factoryId = factory.id;
             return factory;
         }
         return;

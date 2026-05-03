@@ -1,5 +1,4 @@
 function isInWhitelist(entity, whitelist) {
-    console.log(!entity.owner || !whitelist.includes(entity.owner.username), !entity.owner, !whitelist.includes(entity.owner.username))
     return !entity.owner || !whitelist.includes(entity.owner.username);
 }
 
@@ -19,7 +18,7 @@ function getEnergyCapacityAvailable(room, spawn = null) {
 exports.getAvailableCreepConfiguration = function(configurations, room) {
     const energyCapacityAvailable = getEnergyCapacityAvailable(room);
 
-    for (i = 0; i < configurations.length; i++) {
+    for (let i = 0; i < configurations.length; i++) {
         const currentConfiguration = configurations[i];
         const nextConfiguration = configurations[i + 1];
         // Если на следующую конфигурацию не хватит энергии.

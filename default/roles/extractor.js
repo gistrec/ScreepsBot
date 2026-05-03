@@ -68,8 +68,8 @@ const roleExtractor = {
         // Если есть ресурсы
 	    if(!creep.memory.harvesting) {
             // TODO: Fill 10k to terminal, then fill storage
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK);
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK);
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return;
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return;
         } else {
             const mineral = Game.getObjectById(creep.memory.mineral_id);
             if (!mineral.mineralAmount) {

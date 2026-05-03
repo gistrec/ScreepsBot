@@ -1,4 +1,4 @@
-const taskCreep     = require('../tasks/creep');
+const taskBoost     = require('../tasks/boost');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
 
@@ -11,7 +11,7 @@ const roleSafeModeGenerator = {
             return;
         }
 
-        if (taskCreep.checkBoost(creep) == OK) return;
+        if (taskBoost.checkBoost(creep) == OK) return;
 
         if (creep.store.getUsedCapacity(RESOURCE_GHODIUM) != 1000) {
             taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_GHODIUM, 1000);

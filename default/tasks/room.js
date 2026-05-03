@@ -4,12 +4,12 @@ let costMatrixRewrites = {}
 
 const getRectangleArea = function(pos, value, rewriteCenter) {
     let result = []
-    for (let x = pos.x - 1; x < pos.x + 1; x++) {
-        for (let y = pos.y - 1; y < pos.y + 1; y++) {
+    for (let x = pos.x - 1; x <= pos.x + 1; x++) {
+        for (let y = pos.y - 1; y <= pos.y + 1; y++) {
             if (x == pos.x && y == pos.y && !rewriteCenter) {
                 continue;
             }
-            result.push({'x': pos.x, 'y': pos.y, 'value': value});
+            result.push({'x': x, 'y': y, 'value': value});
         }
     }
     return result;
@@ -111,7 +111,7 @@ exports.claimClosest = function(creep) {
 
     let target = creep.pos.findClosestByRange(FIND_HOSTILE_STRUCTURES, {
         filter: (structure) => {
-            return structure.structureType == StructureController
+            return structure.structureType == STRUCTURE_CONTROLLER
         }
     });
 
@@ -140,7 +140,7 @@ exports.claimClosest = function(creep) {
  * Проверяем, нужно ли обновлять контроллер.
  */
 function checkUpgradeControllerRequirement(room) {
-    controller = room.controller;
+    const controller = room.controller;
     if (!controller || !controller.my) {
         return;
     }

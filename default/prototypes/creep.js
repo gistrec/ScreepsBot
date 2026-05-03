@@ -7,5 +7,5 @@ Creep.prototype.isDangerous = function(){
 }
 
 Creep.prototype.bodyPartCost = function() {
-    return this.body.reduce((totalCost, bodyPart) => totalCost + BODYPART_COST[bodyPart], 0);
+    return this.body.reduce((totalCost, bodyPart) => totalCost + BODYPART_COST[bodyPart.type], 0);
 }

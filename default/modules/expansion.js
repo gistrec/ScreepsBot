@@ -20,8 +20,6 @@ exports.process = function() {
     if (!expand && Memory.expansion.status != STATUS_IDLE) {
         console.log('[EXPANSION] Expand flag not found - stop claiming')
         Memory.expansion.status = STATUS_IDLE;
-
-        expand.remove();
         return;
     }
 

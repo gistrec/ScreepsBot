@@ -17,7 +17,7 @@ const configurations = [
 
 const roleUpgrader = {
     rebalanceRepairing: function(room) {
-        const MAX_CREEPS_PER_WALL = room.memory.enemy_creeps ? 3 : 1;
+        const MAX_CREEPS_PER_WALL = room.hasHostiles ? 3 : 1;
 
         const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role === 'upgrader'});
         const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART })
@@ -66,7 +66,7 @@ const roleUpgrader = {
             return mineralsCount + (structure ? structure.store.getUsedCapacity(RESOURCE_ENERGY) : 0)
         }, 0);
 
-        const boost = (room.memory.enemy_creeps) ? "XLH2O" : false; // Boost repair and build
+        const boost = room.hasHostiles ? "XLH2O" : false; // Boost repair and build
         const role = 'upgrader';
         const name = 'Upgrader' + Game.time;
         const energyStructures = utils.getEnergyStructures(room, spawn);
@@ -104,14 +104,14 @@ const roleUpgrader = {
             if (taskStructure.buildClosest(creep) == OK) return;
 
 	        // Если чиним структуру, то пытаемся её дочинить
-            if (taskStructure.continueRepearSturcture(creep) == OK) return;
+            if (taskStructure.continueRepairStructure(creep) == OK) return;
 
             // В осаде дороги/контейнеры не трогаем - они часто снаружи рампартов, плюс
             // апгрейдер должен максимально лить hits в рампарты, а не размазываться.
-            const types = creep.room.memory.defending
+            const types = creep.room.isDefending
                 ? [STRUCTURE_RAMPART]
                 : [STRUCTURE_ROAD, STRUCTURE_CONTAINER, STRUCTURE_RAMPART];
-            if (taskStructure.startRepearClosestStructs(creep, types) == OK) return;
+            if (taskStructure.startRepairClosestStructs(creep, types) == OK) return;
 
             if (creep.room.controller && creep.room.controller.my && creep.room.controller.level != 8) {
                 if (taskStructure.upgradeController(creep) == OK) return;
@@ -128,7 +128,7 @@ const roleUpgrader = {
             // Основная задача:
             // * Поднять лежащие ресурсы
             // * Получить ресурсы из хранилища
-            if (!creep.room.memory.enemy_creeps || creep.room.controller.safeMode) {
+            if (!creep.room.isUnderAttack) {
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
             }
 

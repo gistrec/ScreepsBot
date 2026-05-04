@@ -1,3 +1,28 @@
+// Состояние угрозы. Три уровня, отвечают на разные вопросы; не объединять в один флаг -
+// семантика разная и call-сайты опираются на конкретный.
+//
+// hasHostiles    - враги физически в комнате прямо сейчас (>0 в memory.enemy_creeps).
+//                  Игнорирует safeMode. Используется когда важен сам факт присутствия:
+//                  лаба/нюкер не работают, рампарты держатся выше, апгрейдер бустит и т.п.
+// isUnderAttack  - hasHostiles И safeMode не активен. Это "опасно прямо сейчас":
+//                  миннеры паузятся, чарджер тянет из терминала, пикап с пола стоп.
+// isDefending    - военный режим (memory.defending): включает hold-down ~50 тиков после
+//                  ухода врага и активный safeMode. Шире isUnderAttack по времени.
+//                  Используется для max-count defender'ов, паузы стройки/ремонта дорог,
+//                  откладывания апгрейда контроллера.
+Object.defineProperty(Room.prototype, 'hasHostiles', {
+    configurable: true,
+    get() { return !!this.memory.enemy_creeps; },
+});
+Object.defineProperty(Room.prototype, 'isUnderAttack', {
+    configurable: true,
+    get() { return !!this.memory.enemy_creeps && !(this.controller && this.controller.safeMode); },
+});
+Object.defineProperty(Room.prototype, 'isDefending', {
+    configurable: true,
+    get() { return !!this.memory.defending; },
+});
+
 Room.prototype.transfer = function(resource_type, source_id, target_id, max_resource_count_in_target = null) {
     if (source_id == "terminal") source_id = this.terminal.id;
     if (source_id == "storage")  source_id = this.storage.id;

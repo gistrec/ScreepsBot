@@ -84,7 +84,7 @@ const roleCharger = {
                 if (taskResource.fillClosestStructure(creep, STRUCTURE_EXTENSION) == OK) return;
             }
 
-            if (creep.room.memory.enemy_creeps && !creep.room.controller.safeMode) {
+            if (creep.room.isUnderAttack) {
                 if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, 200) == OK) return;
             }
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, 350)   == OK) return;
@@ -103,7 +103,7 @@ const roleCharger = {
 	            return;
 	        }
 
-            if (!creep.room.memory.enemy_creeps || creep.room.controller.safeMode) {
+            if (!creep.room.isUnderAttack) {
                 // Мирный режим: сначала pickup и контейнер у майнера (это его выход).
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER]) == OK) return;

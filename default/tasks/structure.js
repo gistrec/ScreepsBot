@@ -2,7 +2,7 @@ const taskRoom = require('./room');
 const utils = require('../utils');
 
 // Структуры, которые ремонтируются каким-либо ботом
-exports.repearing_structures = [];
+exports.repairing_structures = [];
 exports.charging_structures = [];
 
 exports.hasHealingCreeps = function(spawn) {
@@ -50,7 +50,7 @@ exports.buildClosest = function(creep) {
     // В осаде стройку паузим: construction site может стоять снаружи рампартов, и билдер
     // вылезет за барьер прямо под огонь. Возвращаем ERR_NOT_FOUND - вызывающие роли провалятся
     // на следующий fallback (ремонт рампартов, апгрейд контроллера и т.д.).
-    if (creep.room.memory.defending) return ERR_NOT_FOUND;
+    if (creep.room.isDefending) return ERR_NOT_FOUND;
 
     // findClosestByRange по умолчанию ограничен текущей комнатой (range-based, без pathfinding),
     // дополнительный фильтр по room.name был избыточен.
@@ -66,7 +66,7 @@ exports.buildClosest = function(creep) {
  * 1. Едем к целе
  * 2. Чиним
  */
-exports.repearTarget = function(creep, target) {
+exports.repairTarget = function(creep, target) {
     if (creep.memory.action != 'repair') {
         creep.memory.action = 'repair';
         creep.say('🩹 Repair');
@@ -89,7 +89,7 @@ exports.repearTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[repearTarget] Error ${status}`)
+            console.log(`[repairTarget] Error ${status}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -98,39 +98,39 @@ exports.repearTarget = function(creep, target) {
  * Задача на починку. Алгоритм:
  * @param {Array} types - типы структур для починки
  */
-exports.startRepearClosestStructs = function(creep, types, full_health = false) {
+exports.startRepairClosestStructs = function(creep, types, full_health = false) {
     // Берём кеш структур по типам - он уже посчитан другими find'ами в этом тике.
     const byType = utils.getStructuresByType(creep.room);
     const candidates = types.flatMap(t => byType[t] || []);
 
     const target = creep.pos.findClosestByRange(candidates, {
-        filter: (s) => exports.repearing_structures.includes(s.id) == false
+        filter: (s) => exports.repairing_structures.includes(s.id) == false
                     && ((full_health) ? (s.hits < s.hitsMax * 0.99) : (s.hits < s.hitsMax * 0.5))
                     && s.hits > 0
     });
     if (!target) return ERR_NOT_FOUND;
 
     creep.memory.repairing  = target.id;
-    exports.repearing_structures.push(target.id)
+    exports.repairing_structures.push(target.id)
 
-    return exports.repearTarget(creep, target);
+    return exports.repairTarget(creep, target);
 }
 
-exports.continueRepearSturcture = function(creep) {
+exports.continueRepairStructure = function(creep) {
     if (creep.memory.repairing) {
-        if (!exports.repearing_structures.includes(creep.memory.repairing)) {
-            exports.repearing_structures.push(creep.memory.repairing)
+        if (!exports.repairing_structures.includes(creep.memory.repairing)) {
+            exports.repairing_structures.push(creep.memory.repairing)
         }
 
         const target_id = creep.memory.repairing;
         const target = Game.getObjectById(target_id);
         // В осаде бросаем недоремонт всего, кроме рампартов - чтобы не торчать снаружи стен.
-        const dropOnDefend = creep.room.memory.defending && target && target.structureType != STRUCTURE_RAMPART;
+        const dropOnDefend = creep.room.isDefending && target && target.structureType != STRUCTURE_RAMPART;
         if (target && target.hits < target.hitsMax && !dropOnDefend) {
-            return exports.repearTarget(creep, target);
+            return exports.repairTarget(creep, target);
         } else {
             delete creep.memory.repairing;
-            _.remove(exports.repearing_structures, id => id == target_id);
+            _.remove(exports.repairing_structures, id => id == target_id);
         }
     }
     return ERR_NOT_FOUND;

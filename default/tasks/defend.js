@@ -92,7 +92,7 @@ exports.fireTower = function(room) {
     if (towers.length == 0) return;
 
     // Под атакой даём больший запас HP барьерам - 15k уже почти разрушен.
-    const repairThreshold = room.memory.enemy_creeps ? 100000 : 15000;
+    const repairThreshold = room.hasHostiles ? 100000 : 15000;
 
     // Считаем целевые списки один раз на комнату, потом каждая башня выбирает ближайшего
     // через findClosestByRange(array). Раньше каждая башня делала по 4 find() - до 24 сканов
@@ -107,7 +107,7 @@ exports.fireTower = function(room) {
     const walls    = structuresByType[STRUCTURE_WALL]    || [];
     const damagedBarriers = ramparts.concat(walls).filter(s => s.hits < repairThreshold);
 
-    const damagedRoadsContainers = !room.memory.enemy_creeps
+    const damagedRoadsContainers = !room.hasHostiles
         ? (structuresByType[STRUCTURE_ROAD] || []).concat(structuresByType[STRUCTURE_CONTAINER] || [])
             .filter(s => s.hitsMax - s.hits > 800)
         : [];
@@ -136,7 +136,7 @@ exports.fireTower = function(room) {
             continue;
         }
 
-        if (!room.memory.enemy_creeps && damagedRoadsContainers.length > 0) {
+        if (!room.hasHostiles && damagedRoadsContainers.length > 0) {
             const damaged = tower.pos.findClosestByRange(damagedRoadsContainers);
             if (damaged) {
                 tower.repair(damaged);

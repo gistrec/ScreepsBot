@@ -88,7 +88,7 @@ visualiseRoom = function(room) {
         .text(`〽️ E/t: ${energyPerTick}`, pos.x + 1, pos.y, {align: 'left'})
         .text(`⚡ Energy ${room.energyAvailable}/${room.energyCapacityAvailable}`, pos.x + 1, pos.y + 1, {align: 'left'})
         .text(`🏰 Upgrade ${upgradeText}`, pos.x + 1, pos.y + 2, {align: 'left'})
-    if (room.memory.defending) {
+    if (room.isDefending) {
         room.visual.text("⚔️ Defending mode: On", pos.x + 1, pos.y + 3, {color: 'red', align: 'left'})
     } else {
         room.visual.text("⚔️ Defending mode: Off", pos.x + 1, pos.y + 3, {color: 'green', align: 'left'})
@@ -181,7 +181,7 @@ visualiseMap = function(room) {
         Game.map.visual.text(labText, new RoomPosition(0, 16, room.name), {color: labColor, align: 'left', fontSize: 6});
     }
 
-    if (room.memory.defending) {
+    if (room.isDefending) {
         Game.map.visual.text("⚔️ On", new RoomPosition(0, 47, room.name), {color: '#FF0000', align: 'left', fontSize: 6})
     } else {
         Game.map.visual.text("⚔️ Off", new RoomPosition(0, 47, room.name), {color: '#00FF00', align: 'left', fontSize: 6})

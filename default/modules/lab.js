@@ -179,7 +179,7 @@ function forceEvacuateLabs(room, expectedOutput) {
 }
 
 exports.runReaction = function(room) {
-    if (room.memory.enemy_creeps) return;
+    if (room.hasHostiles) return;
 
     const source1 = Game.getObjectById(labs[room.name]["sources"][0]);
     const source2 = Game.getObjectById(labs[room.name]["sources"][1]);
@@ -260,7 +260,7 @@ exports.runReaction = function(room) {
 }
 
 exports.refillLabs = function(room) {
-    if (room.memory.enemy_creeps) return;
+    if (room.hasHostiles) return;
 
     const source1 = Game.getObjectById(labs[room.name]["sources"][0]);
     const source2 = Game.getObjectById(labs[room.name]["sources"][1]);

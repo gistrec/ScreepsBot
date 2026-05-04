@@ -37,7 +37,7 @@ const applyRampartsToCostMatrix = function(roomName, costMatrix) {
 
 const roleRampartDefender = {
     spawn: function(room, force = false) {
-        if (!room.memory.enemy_creeps || room.controller.safeMode) {
+        if (!room.isUnderAttack) {
             if (!force) return true;
         }
 

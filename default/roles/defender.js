@@ -64,7 +64,7 @@ const roleDefender = {
         }
 
         const defenders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == 'defender' });
-        const max_count = (room.memory.defending)
+        const max_count = room.isDefending
             ? MAX_PER_DEFENDING_ROOM
             : MAX_PER_ROOM
 
@@ -104,21 +104,21 @@ const roleDefender = {
 	    if(!creep.memory.harvesting) {
             // Первоочередная задача:
             // * Заполнить башню
-            const minInsufficientEnergy = (creep.room.memory.defending) ? 100 : 200; // В режиме осады всегда заправляем башню энергией.
+            const minInsufficientEnergy = creep.room.isDefending ? 100 : 200; // В режиме осады всегда заправляем башню энергией.
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, minInsufficientEnergy) == OK) return;
 	
             // Второстепенная задача:
             // * накачать энергией барьер
-            if (taskStructure.continueRepearSturcture(creep) == OK) return;
-            if (taskStructure.startRepearClosestStructs(creep, [STRUCTURE_RAMPART], true) == OK) return;
-            // if (taskStructure.startRepearClosestStructs(creep, [STRUCTURE_WALL]) == OK) return;
+            if (taskStructure.continueRepairStructure(creep) == OK) return;
+            if (taskStructure.startRepairClosestStructs(creep, [STRUCTURE_RAMPART], true) == OK) return;
+            // if (taskStructure.startRepairClosestStructs(creep, [STRUCTURE_WALL]) == OK) return;
         } else {
             // Основная задача:
             // * Получить ресурсы из хранилища
             // * Поднять ресурсы
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_FACTORY]) == OK) return;
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
-            if (!creep.room.memory.enemy_creeps) {
+            if (!creep.room.hasHostiles) {
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], true)  == OK) return;
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], false) == OK) return;
             }

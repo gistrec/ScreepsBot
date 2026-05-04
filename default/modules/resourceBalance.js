@@ -39,7 +39,7 @@ exports.balanceEnergy = function() {
 
         // When under attack or critically low on energy, prep the factory to decompress
         // batteries back into energy on the next processFactory tick.
-        const underStress = room.memory.enemy_creeps
+        const underStress = room.hasHostiles
             || room.energyAvailable < room.energyCapacityAvailable * 0.3;
         if (underStress) {
             ensureFactoryHasBatteries(room);
@@ -238,7 +238,7 @@ exports.processFactory = function() {
             const factoryEnergy  = factory.store.getUsedCapacity(RESOURCE_ENERGY);
             const factoryBattery = factory.store.getUsedCapacity(RESOURCE_BATTERY);
 
-            const underStress = room.memory.enemy_creeps
+            const underStress = room.hasHostiles
                 || room.energyAvailable < room.energyCapacityAvailable * 0.3;
 
             // Decompress: 50 batteries -> 500 energy.

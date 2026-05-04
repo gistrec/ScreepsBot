@@ -8,9 +8,8 @@ const utils = require('../utils');
 // Прерывание не отменяет задачу, просто пропускает её на текущем тике.
 function shouldInterruptStatefulTask(creep) {
     const room = creep.room;
-    const underAttack = room.memory.enemy_creeps && !room.controller.safeMode;
-    const lowEnergy   = room.energyAvailable < room.energyCapacityAvailable * 0.3;
-    if (!underAttack && !lowEnergy) return false;
+    const lowEnergy = room.energyAvailable < room.energyCapacityAvailable * 0.3;
+    if (!room.isUnderAttack && !lowEnergy) return false;
 
     // Безопасно прерывать только если в трюме одна энергия или пусто.
     return creep.store.getUsedCapacity() == creep.store.getUsedCapacity(RESOURCE_ENERGY);
@@ -97,7 +96,7 @@ exports.fillClosestStructure = function(creep, structure, count = 0) {
 // когда комната "спокойна" - давно нет атаки, есть избыток ресурсов. Пороги переопределяются
 // через memory: nuker_fill_min_total_energy, nuker_fill_peace_ticks.
 exports.nukerFillSafe = function(room) {
-    if (room.memory.enemy_creeps) return false;
+    if (room.hasHostiles) return false;
 
     const minEnergy = room.memory.nuker_fill_min_total_energy || 1_500_000;
     if (room.getTotalEnergy() < minEnergy) return false;

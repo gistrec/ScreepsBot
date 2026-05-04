@@ -148,7 +148,7 @@ function checkUpgradeControllerRequirement(room) {
     // Всегда держим выше 50%, чтобы можно было активировать safeMode.
     if (controller.ticksToDowngrade < CONTROLLER_DOWNGRADE[controller.level] * 0.8) {
         room.memory.need_maintain_controller = true;
-    } else if (!room.memory.defending && controller.ticksToDowngrade < CONTROLLER_DOWNGRADE[controller.level] * 0.95) {
+    } else if (!room.isDefending && controller.ticksToDowngrade < CONTROLLER_DOWNGRADE[controller.level] * 0.95) {
         room.memory.need_maintain_controller = true;
     } else {
         room.memory.need_maintain_controller = false;

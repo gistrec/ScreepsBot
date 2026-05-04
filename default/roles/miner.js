@@ -29,7 +29,7 @@ const configurations = [
 
 const roleMiner = {
     spawn: function(room) {
-        if (room.memory.enemy_creeps && !room.controller.safeMode) {
+        if (room.isUnderAttack) {
             return true;
         }
 

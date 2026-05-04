@@ -76,7 +76,7 @@ function upgradeCreeps(room) {
 }
 
 function updateRoom(room) {
-    if (room.memory.defending || Game.time % 5 == 0) try {
+    if (room.isDefending || Game.time % 5 == 0) try {
         taskDefend.checkStatus(room);
     } catch(err) { err.log() };
 
@@ -93,7 +93,7 @@ function updateRoom(room) {
         upgradeCreeps(room);
     } catch(err) { err.log() };
 
-    const rebalanceTime = room.memory.enemy_creeps ? 100 : 600;
+    const rebalanceTime = room.hasHostiles ? 100 : 600;
     if (Game.time % rebalanceTime == 0) try {
         roleDefender.rebalanceRepairing(room);
         roleUpgrader.rebalanceRepairing(room)

@@ -98,7 +98,7 @@ const roleRemoteUpgrader = {
             // if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
         } else {
             // Если чиним структуру, то пытаемся её дочинить
-            if (taskStructure.continueRepearSturcture(creep) == OK) return;
+            if (taskStructure.continueRepairStructure(creep) == OK) return;
             if (taskStructure.buildClosest(creep) == OK) return;
 
             if (taskResource.fillClosestStructure(creep, STRUCTURE_SPAWN)     == OK) return;
@@ -106,7 +106,7 @@ const roleRemoteUpgrader = {
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, 400) == OK) return;
 
 	        const types = [STRUCTURE_ROAD, STRUCTURE_CONTAINER];
-            if (taskStructure.startRepearClosestStructs(creep, types) == OK) return;
+            if (taskStructure.startRepairClosestStructs(creep, types) == OK) return;
 
             taskStructure.upgradeController(creep);
         }

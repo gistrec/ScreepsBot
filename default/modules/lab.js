@@ -1,7 +1,7 @@
 const profiler = require('../screeps-profiler');
 
 
-const labs = {
+const labs = exports.labs = {
     "W9S37": {
         "sources": ["63440992ab176745a40c5ec2", "6343d07c2b2c07264c03585b"],
         "targets": [

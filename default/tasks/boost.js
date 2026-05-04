@@ -1,4 +1,5 @@
 const taskResource = require('./resource');
+const labModule    = require('modules/lab');
 
 /**
  * Проверяем можно ли забустить крипа (есть ли часть + у неё нет буста).
@@ -48,16 +49,30 @@ exports.checkBoost = function(creep) {
         return ERR_NOT_FOUND;
     }
 
+    // В активной осаде комбат-роли (upgrader/defender) пропускают boost: ехать на лабу
+    // = бросить рампарт под огнём. Запись creep.memory.boost не удаляем - как только
+    // осада закончится, креп заглянет в лабу при следующем тике.
+    if (creep.room.isUnderAttack && ['upgrader', 'defender'].includes(creep.memory.role)) {
+        return ERR_NOT_FOUND;
+    }
+
     // 1. Получаем лабораторию, с которой будем работать.
     const lab = (() => {
         if (creep.memory.lab_id) {
             return Game.getObjectById(creep.memory.lab_id);
         }
 
-        // Нужно выбрать неиспользуемую лабораторию без кулдауна.
+        // Реакционные лабы (source/target) исключаем: они забиты минералами пайплайна,
+        // и step 3 boost'а вывалил бы их содержимое в терминал, ломая reaction loop.
+        const labConfig = labModule.labs[creep.room.name];
+        const reactionIds = new Set(labConfig ? [...labConfig.sources, ...labConfig.targets] : []);
+
         const usedLabs = Object.keys(Game.creeps).map(creepName => Game.creeps[creepName].memory.lab_id).filter(x => x);
         const lab = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
-            filter: (s) => s.structureType == STRUCTURE_LAB && s.cooldown == 0 && !usedLabs.includes(s.id)
+            filter: (s) => s.structureType == STRUCTURE_LAB
+                        && s.cooldown == 0
+                        && !usedLabs.includes(s.id)
+                        && !reactionIds.has(s.id)
         });
         return lab;
     })();
@@ -105,7 +120,13 @@ exports.checkBoost = function(creep) {
         if (creep.store.getFreeCapacity() != 0 && (creepEnergy + labEnergy) < totalEnergy) {
             const needEnergy = totalEnergy - (creepEnergy + labEnergy);
             const energyCount = Math.min(needEnergy, creep.store.getFreeCapacity());
-            taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_CONTAINER, STRUCTURE_TERMINAL], RESOURCE_ENERGY, energyCount);
+            const result = taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_CONTAINER, STRUCTURE_TERMINAL], RESOURCE_ENERGY, energyCount);
+            if (result == ERR_NOT_FOUND) {
+                console.log(`[${creep.room.name}][Boost] Not found energy for boost creep ${creep.name}. Boost task was deleted.`);
+                delete creep.memory.lab_id;
+                delete creep.memory.boost;
+                return ERR_NOT_FOUND;
+            }
         }else {
             taskResource.fillTarget(creep, lab, RESOURCE_ENERGY);
         }

@@ -11,11 +11,13 @@ exports.checkStatus = function(room) {
     const enemyCreeps = room.find(FIND_HOSTILE_CREEPS, {filter: creep => _.find(creep.body, bodyPart => [ATTACK, RANGED_ATTACK, CLAIM, WORK].includes(bodyPart.type))});
     room.memory.enemy_creeps = enemyCreeps.length;
 
+    // Под defending checkStatus вызывается каждый тик - используем общий per-tick кеш структур
+    // вместо 3 отдельных room.find(FIND_MY_STRUCTURES, ...). Кеш шарится с fireTower и rampartDefender.
+    const myByType = utils.getMyStructuresByType(room);
+
     // Есть ли поврежденные барьеры.
-    const allRamparts = room.find(FIND_MY_STRUCTURES, {
-        filter: (struct) => STRUCTURE_RAMPART == struct.structureType
-    });
-    const rampartDamaged = allRamparts.filter(r => r.hits < r.hitsMax * 0.8);
+    const allRamparts = myByType[STRUCTURE_RAMPART] || [];
+    const rampartDamaged      = allRamparts.filter(r => r.hits < r.hitsMax * 0.8);
     const rampartSuperDamaged = allRamparts.filter(r => r.hits < r.hitsMax * 0.05);
 
     // Отслеживаем суммарный HP rampart'ов между тиками, чтобы поймать момент атаки
@@ -27,11 +29,11 @@ exports.checkStatus = function(room) {
     room.memory.last_rampart_hits = rampartTotalHits;
     const rampartUnderAttack = hitsDelta > 5000;
 
-    // Есть ли поврежденные спавны.
-    const spawnDamaged = room.find(FIND_MY_STRUCTURES, {
-        filter: (struct) => [STRUCTURE_SPAWN, STRUCTURE_TOWER, STRUCTURE_TERMINAL, STRUCTURE_STORAGE, STRUCTURE_FACTORY].includes(struct.structureType)
-                            && struct.hits != struct.hitsMax
-    });
+    // Есть ли поврежденные спавны/башни/терминал/storage/factory.
+    const criticalTypes = [STRUCTURE_SPAWN, STRUCTURE_TOWER, STRUCTURE_TERMINAL, STRUCTURE_STORAGE, STRUCTURE_FACTORY];
+    const spawnDamaged = criticalTypes
+        .flatMap(t => myByType[t] || [])
+        .filter(s => s.hits != s.hitsMax);
     // Включаем SafeMode, если барьер или спаун повреждены.
     // Проверка на наличие врагов добавлена чтобы барьер нечайно сам не регрессировал + при апгрейде контроллера.
     if ((rampartSuperDamaged.length || spawnDamaged.length || rampartUnderAttack) && enemyCreeps.length && controller.safeModeAvailable && !controller.upgradeBlocked) {

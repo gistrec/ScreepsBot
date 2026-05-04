@@ -65,7 +65,11 @@ const roleRampartDefender = {
         let rampart = Game.getObjectById(creep.memory.rampart_id);
         if (rampart && !creep.pos.isEqualTo(rampart)) {
             creep.moveTo(rampart, {
-                reusePath: false,
+                // Цель статичная (rampart никуда не уходит). reusePath:10 экономит десятки CPU
+                // под атакой: вместо нового PathFinder.search() каждый тик - раз в 10.
+                // maxRooms:1 ограничивает поиск своей комнатой.
+                reusePath: 10,
+                maxRooms: 1,
                 plainCost: 2,
                 swampCost: 10,
                 ignoreRoads: true,

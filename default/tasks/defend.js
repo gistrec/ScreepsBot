@@ -58,6 +58,10 @@ exports.checkStatus = function(room) {
     // Если существует хотя бы одна угроза, то активируем защитный режим
     // В этом режиме создаются Defender'ы
     if (rampartDamaged.length || spawnDamaged.length || enemyCreeps.length || controller.safeMode) {
+        // Обновляем "последний тик активной угрозы" - используется для фильтра
+        // безопасных фоновых задач (например, fill nuker).
+        room.memory.last_attack_at = Game.time;
+
         if (room.memory.defending) {
             return;
         }

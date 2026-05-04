@@ -78,6 +78,55 @@ exports.fillClosestStructure = function(creep, structure, count = 0) {
 }
 
 
+// Низкоприоритетная фоновая задача: закидываем nuker энергией/гудиумом, но только
+// когда комната "спокойна" - давно нет атаки, есть избыток ресурсов. Пороги переопределяются
+// через memory: nuker_fill_min_total_energy, nuker_fill_peace_ticks.
+exports.nukerFillSafe = function(room) {
+    if (room.memory.enemy_creeps) return false;
+
+    const minEnergy = room.memory.nuker_fill_min_total_energy || 1_500_000;
+    if (room.getTotalEnergy() < minEnergy) return false;
+
+    const minPeace = room.memory.nuker_fill_peace_ticks || 5000;
+    if (room.memory.last_attack_at && Game.time - room.memory.last_attack_at < minPeace) return false;
+
+    return true;
+}
+
+// Обёртка над fillClosestStructure(NUKER) с проверкой безопасности. Вызывается из
+// charger/upgrader в самом конце fill-цепочки.
+exports.fillNukerIfCalm = function(creep) {
+    if (!exports.nukerFillSafe(creep.room)) return ERR_NOT_FOUND;
+    return exports.fillClosestStructure(creep, STRUCTURE_NUKER);
+}
+
+// Раз в N тиков шедулим charger transfer: ghodium из storage/terminal -> nuker.
+// Энергию nuker'у заливает обычная fill-цепочка через fillNukerIfCalm.
+exports.scheduleNukerGhodium = function(room) {
+    if (!exports.nukerFillSafe(room)) return;
+
+    const nukers = utils.getMyStructuresByType(room)[STRUCTURE_NUKER] || [];
+    const nuker = nukers[0];
+    if (!nuker) return;
+    if (nuker.store.getFreeCapacity(RESOURCE_GHODIUM) == 0) return;
+
+    const source = [room.storage, room.terminal].find(s => s && s.store.getUsedCapacity(RESOURCE_GHODIUM) >= 100);
+    if (!source) return;
+
+    // Не шедулим повторно, если charger уже везёт.
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {
+        filter: c => c.memory.role == 'charger'
+                  && c.memory.transfer
+                  && c.memory.transfer.target_id == nuker.id
+                  && c.memory.transfer.resource_type == RESOURCE_GHODIUM
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    console.log(`[${room.name}] Scheduling ghodium fill for nuker.`);
+    room.transfer(RESOURCE_GHODIUM, source.id, nuker.id);
+}
+
+
 exports.pickupTarget = function(creep, target) {
     if (creep.memory.action != 'charge') {
         creep.memory.action = 'charge';

@@ -33,11 +33,12 @@ const roleRampartDefender    = require('roles/rampartDefender');
 const roleSafeModeGenerator  = require('roles/safeModeGenerator');
 const roleControllerUpgrader = require('roles/controllerUpgrader');
 
-const taskDefend = require('tasks/defend');
-const taskCreep  = require('tasks/creep');
-const taskRoom   = require('tasks/room');
-const taskBoost  = require('tasks/boost');
-const taskLink   = require('tasks/link');
+const taskDefend   = require('tasks/defend');
+const taskCreep    = require('tasks/creep');
+const taskRoom     = require('tasks/room');
+const taskBoost    = require('tasks/boost');
+const taskLink     = require('tasks/link');
+const taskResource = require('tasks/resource');
 
 const moduleLab   = require('modules/lab');
 const moduleBuild = require('modules/build');
@@ -96,6 +97,12 @@ function updateRoom(room) {
     if (Game.time % rebalanceTime == 0) try {
         roleDefender.rebalanceRepairing(room);
         roleUpgrader.rebalanceRepairing(room)
+    } catch(err) { err.log() };
+
+    // Фоновая задача: при спокойной комнате с большим резервом - шедулим заливку nuker'а
+    // ghodium'ом. Энергию заливает обычная fill-цепочка charger/upgrader.
+    if (Game.time % 1000 == 0) try {
+        taskResource.scheduleNukerGhodium(room);
     } catch(err) { err.log() };
 }
 

@@ -114,8 +114,8 @@ const roleUpgrader = {
                 if (taskStructure.upgradeController(creep) == OK) return;
             }
 
-            // Заполняем нюкер.
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_NUKER)  == OK) return;
+            // Заполняем нюкер - только когда в комнате спокойно и есть избыток ресурсов.
+            if (taskResource.fillNukerIfCalm(creep) == OK) return;
         }else {
 	        if (creep.memory.link_id) {
 	            taskResource.withdrawTarget(creep, Game.getObjectById(creep.memory.link_id));

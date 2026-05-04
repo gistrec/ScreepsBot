@@ -94,7 +94,7 @@ const roleCharger = {
             // TODO: Сделать так, чтобы в терминале всегда было 30к энергии для резерва
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL)  == OK) return;
             if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)   == OK) return;
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_NUKER)  == OK) return;
+            if (taskResource.fillNukerIfCalm(creep) == OK) return;
         } else {
             // Основная задача: получить энергию для заполнения spawn/extension/etc.
             const link = Game.getObjectById(creep.memory.link_id)

@@ -33,6 +33,14 @@ exports.getAvailableCreepCount = function(configurations, room) {
     return configuration["max_count"];
 }
 
+// TTL, при котором майнера пора заменять: реальное время спавна нового тела + запас на дорогу.
+// Используется и в miner.spawn (когда пора спавнить замену), и в sources.get (новый игнорирует
+// уходящего при выборе source - чтобы пойти именно на его место).
+exports.minerReplacementTtl = function(partsCount) {
+    const WALK_BUFFER = 50;
+    return partsCount * CREEP_SPAWN_TIME + WALK_BUFFER;
+};
+
 exports.getEnergyStructures = function(room, spawn) {
     const sortByRange = ((first, second) => {
         const rangeFirst  = spawn.pos.getRangeTo(first);

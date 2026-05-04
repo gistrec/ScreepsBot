@@ -35,11 +35,15 @@ const roleMiner = {
             return true;
         }
 
+        const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
+        const replacementTtl = utils.minerReplacementTtl(creepConfiguration.parts.length);
+
         // На начальном уровне удваиваем количество майнеров.
+        const roomSources = room.find(FIND_SOURCES);
         const sourcesCount = (room.energyCapacityAvailable < 550)
-            ? 2 * room.find(FIND_SOURCES).length
-            : room.find(FIND_SOURCES).length;
-        const miners = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "miner" && creep.ticksToLive > 150});
+            ? 2 * roomSources.length
+            : roomSources.length;
+        const miners = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "miner" && creep.ticksToLive > replacementTtl});
         if (miners.length >= sourcesCount) {
             return true;
         }
@@ -49,23 +53,47 @@ const roleMiner = {
             return true;
         }
 
-        const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Room need Miner, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
 
+        // Pre-assign source: выбираем тот, где меньше всего живых майнеров (тот, что уходит, не считается).
+        // Без этого новый рискует попасть на source соседа вместо того, чтобы заменить умирающего.
+        const targetSource = roomSources.map((s) => ({
+            source: s,
+            count: miners.filter((m) => m.memory.source_id == s.id).length,
+        })).sort((a, b) => a.count - b.count).shift().source;
+
         const name = 'Miner' + Game.time;
         const role = 'miner';
         const miningPower = creepConfiguration["miningPower"];
+        const source_id = targetSource.id;
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, miningPower }, energyStructures});
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, miningPower, source_id }, energyStructures});
+        console.log(`[${room.name}] Spawning new ${role} ${name} for source ${source_id}`);
 
         return false;
     },
     run: function(creep) {
         if (creep.fatigue != 0) return;
+
+        // Если рядом стоит свежий майнер на том же source - этот старый уже не нужен.
+        // Самоубиваемся, чтобы освободить место (контейнер, спот рядом с source).
+        // TTL < 200: я уже доживаю; TTL замены > 800: это явно свежий крип, а не просто другой умирающий.
+        if (creep.ticksToLive < 200 && creep.memory.source_id) {
+            const replacement = creep.pos.findInRange(FIND_MY_CREEPS, 2, {
+                filter: (c) => c.id != creep.id
+                            && c.memory.role == 'miner'
+                            && c.memory.source_id == creep.memory.source_id
+                            && c.ticksToLive > 800
+            }).shift();
+            if (replacement) {
+                console.log(`[${creep.room.name}] Miner ${creep.name} (TTL ${creep.ticksToLive}) hands off to ${replacement.name}`);
+                creep.suicide();
+                return;
+            }
+        }
 
         // Двигаемся к контейнеру.
         const container = Game.getObjectById(creep.memory.container_id);
@@ -83,13 +111,23 @@ const roleMiner = {
             taskResource.withdrawTarget(creep, container);
         }
 
+        const link = Game.structures[creep.memory.link_id];
+
+        // Не майним, если энергии некуда деваться: трюм забит, линк забит/отсутствует
+        // и под крипом нет контейнера со свободным местом - иначе harvest пропадёт впустую.
+        const trunkFull = creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
+        const linkFull  = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
+        const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+        if (trunkFull && linkFull && !containerUsable) {
+            return;
+        }
+
         // Основная задача:
         // * Добывать ресурсы
         const target = sources.get(creep);
         taskResource.harvestTarget(creep, target);
 
         // Передаем ресурсы линку.
-        const link = Game.structures[creep.memory.link_id];
         if (link && !creep.store.getFreeCapacity(RESOURCE_ENERGY) && creep.store.getCapacity(RESOURCE_ENERGY) && link.store.getFreeCapacity(RESOURCE_ENERGY)) {
             taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
         }

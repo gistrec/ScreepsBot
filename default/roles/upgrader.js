@@ -106,8 +106,11 @@ const roleUpgrader = {
 	        // Если чиним структуру, то пытаемся её дочинить
             if (taskStructure.continueRepearSturcture(creep) == OK) return;
 
-            // TODO: Если комнату осаждают, то чиним только RAMPART
-	        const types = [STRUCTURE_ROAD, STRUCTURE_CONTAINER, STRUCTURE_RAMPART];
+            // В осаде дороги/контейнеры не трогаем - они часто снаружи рампартов, плюс
+            // апгрейдер должен максимально лить hits в рампарты, а не размазываться.
+            const types = creep.room.memory.defending
+                ? [STRUCTURE_RAMPART]
+                : [STRUCTURE_ROAD, STRUCTURE_CONTAINER, STRUCTURE_RAMPART];
             if (taskStructure.startRepearClosestStructs(creep, types) == OK) return;
 
             if (creep.room.controller && creep.room.controller.my && creep.room.controller.level != 8) {

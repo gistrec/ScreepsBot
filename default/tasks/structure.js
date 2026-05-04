@@ -47,6 +47,11 @@ exports.buildTarget = function(creep, target) {
  * 3. Строим постройку
  */
 exports.buildClosest = function(creep) {
+    // В осаде стройку паузим: construction site может стоять снаружи рампартов, и билдер
+    // вылезет за барьер прямо под огонь. Возвращаем ERR_NOT_FOUND - вызывающие роли провалятся
+    // на следующий fallback (ремонт рампартов, апгрейд контроллера и т.д.).
+    if (creep.room.memory.defending) return ERR_NOT_FOUND;
+
     // findClosestByRange по умолчанию ограничен текущей комнатой (range-based, без pathfinding),
     // дополнительный фильтр по room.name был избыточен.
     const target = creep.pos.findClosestByRange(FIND_MY_CONSTRUCTION_SITES);
@@ -119,7 +124,9 @@ exports.continueRepearSturcture = function(creep) {
 
         const target_id = creep.memory.repairing;
         const target = Game.getObjectById(target_id);
-        if (target && target.hits < target.hitsMax) {
+        // В осаде бросаем недоремонт всего, кроме рампартов - чтобы не торчать снаружи стен.
+        const dropOnDefend = creep.room.memory.defending && target && target.structureType != STRUCTURE_RAMPART;
+        if (target && target.hits < target.hitsMax && !dropOnDefend) {
             return exports.repearTarget(creep, target);
         } else {
             delete creep.memory.repairing;

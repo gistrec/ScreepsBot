@@ -73,20 +73,3 @@ exports.get = function(creep, force = false) {
     return source;
 }
 
-/**
- * Назначаем боту ближайший источник, который он будет копать
- * @param {Creep} creep - creep
- */
-exports.getNearest = function(creep) {
-    if (creep.memory.source_id) {
-        return creep.room.find(FIND_SOURCES, {
-            filter: (source) => source.id == creep.memory.source_id}
-        );
-    }
-
-    const source = creep.pos.findClosestByRange(FIND_SOURCES);
-
-    creep.memory.source_id = source.id;
-
-    return source;
-}

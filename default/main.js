@@ -124,7 +124,18 @@ loop = function () {
                 delete Memory.creeps[creepName];
             }
         }
-        console.log("Died creeps have been deleted");
+        // Чистим Memory.rooms для комнат, которые мы СЕЙЧАС видим и которые нам не принадлежат
+        // (например, потеряли claim, или transient visibility от scout'а в чужой комнате).
+        // Невидимые комнаты не трогаем - не знаем их статуса, могут быть наши remote'ы.
+        if (Memory.rooms) {
+            for (const roomName in Memory.rooms) {
+                const room = Game.rooms[roomName];
+                if (room && (!room.controller || !room.controller.my)) {
+                    delete Memory.rooms[roomName];
+                }
+            }
+        }
+        console.log("Died creeps and orphan rooms memory have been deleted");
     } catch(err) { err.log(); };
 
     for (const name in Game.creeps) try {

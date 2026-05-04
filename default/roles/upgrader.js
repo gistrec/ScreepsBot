@@ -42,8 +42,12 @@ const roleUpgrader = {
             return true;
         }
 
-        const upgraders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "upgrader"});
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
+        const replacementTtl = utils.minerReplacementTtl(creepConfiguration.parts.length);
+
+        // Не учитываем уходящих - чтобы спавнить замену заранее, а не после смерти.
+        // В бутстрапе count=0 в любом случае, фильтр не блокирует первый спавн.
+        const upgraders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "upgrader" && creep.ticksToLive > replacementTtl});
 
         let max_count = creepConfiguration["max_count"];
         let parts = creepConfiguration["parts"];

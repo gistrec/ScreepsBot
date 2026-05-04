@@ -123,7 +123,10 @@ const roleRampartDefender = {
                 }
             }
 
-            creep.attack(target);
+            // attack бьёт только в радиусе 1 - дёргать иначе бессмысленно (ERR_NOT_IN_RANGE в логах).
+            if (creep.pos.inRangeTo(target, 1)) {
+                creep.attack(target);
+            }
         }
     }
 };

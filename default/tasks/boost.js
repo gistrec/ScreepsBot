@@ -90,7 +90,6 @@ exports.checkBoost = function(creep) {
     const totalEnergy = LAB_BOOST_ENERGY * partsCount;                 // Количество энергии, необходимой для буста крипа
     const labEnergy   = lab.store.getUsedCapacity(RESOURCE_ENERGY);    // Количество энергии в лаборатории
     const creepEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);  // Количество энергии в крипе
-    console.log(`Energy: [${creepEnergy} + ${labEnergy} / ${totalEnergy}]`);
     if (labEnergy < totalEnergy) {
         creep.say("⚡Fill lab")
         // Перед тем как начать заполнять лабораторию энергией, нужно выкинуть все лишние ресурсы из трюма.
@@ -131,7 +130,6 @@ exports.checkBoost = function(creep) {
     const totalResources = LAB_BOOST_MINERAL * partsCount;            // Количество нералов, необходимых для буста крипа
     const labResources   = lab.store.getUsedCapacity(resourceType);   // Количество минералов в лаборатории
     const creepResources = creep.store.getUsedCapacity(resourceType); // Количество минералов в крипе
-    console.log(`[${creep.room.name}][Boost] Resource ${resourceType} [In creep ${creepResources} + In lab ${labResources} / Need ${totalResources}]`);
     if (labResources < totalResources) {
         creep.say("💎Fill lab")
 
@@ -163,7 +161,6 @@ exports.checkBoost = function(creep) {
 
     // 5. Бустим крипа
     const status = lab.boostCreep(creep, partsCount)
-    console.log(`LabBoost status: ${status}`);
     switch (status) {
         case OK:
             delete creep.memory.lab_id;

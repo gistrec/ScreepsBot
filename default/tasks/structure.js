@@ -1,4 +1,5 @@
 const taskRoom = require('./room');
+const utils = require('../utils');
 
 // Структуры, которые ремонтируются каким-либо ботом
 exports.repearing_structures = [];
@@ -93,11 +94,12 @@ exports.repearTarget = function(creep, target) {
  * @param {Array} types - типы структур для починки
  */
 exports.startRepearClosestStructs = function(creep, types, full_health = false) {
-    // Дорога не относится к моим структурам...
+    // Берём кеш структур по типам - он уже посчитан другими find'ами в этом тике.
+    const byType = utils.getStructuresByType(creep.room);
+    const candidates = types.flatMap(t => byType[t] || []);
 
-    const target = creep.pos.findClosestByRange(FIND_STRUCTURES, {
-        filter: (s) => types.includes(s.structureType) // Чиним заданный тип
-                    && exports.repearing_structures.includes(s.id) == false // Структура еще никем не чинится
+    const target = creep.pos.findClosestByRange(candidates, {
+        filter: (s) => exports.repearing_structures.includes(s.id) == false
                     && ((full_health) ? (s.hits < s.hitsMax * 0.99) : (s.hits < s.hitsMax * 0.5))
                     && s.hits > 0
     });

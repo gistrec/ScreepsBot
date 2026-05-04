@@ -34,11 +34,14 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
 Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEGER) {
     if (!this.terminal) {
         console.log(`[${this.name}] Terminal not found`);
-        return
+        return ERR_NOT_FOUND;
+    }
+    if (this.terminal.cooldown) {
+        return ERR_TIRED;
     }
     if (!Game.rooms[target_room] || !Game.rooms[target_room].terminal) {
         console.log(`[${target_room}] Terminal not found`);
-        return
+        return ERR_NOT_FOUND;
     }
 
     if (this.terminal.store.getUsedCapacity(RESOURCE_ENERGY) < amount) {
@@ -53,8 +56,15 @@ Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEG
     const costRatio = (cost / amount * 100).toFixed(1);
 
     amount = amount - cost;
-    this.terminal.send(RESOURCE_ENERGY, amount, target_room);
-    console.log(`[${this.name}] Send ${amount} energy to ${target_room} with transaction cost ${cost} (${costRatio}%)`);
+    if (amount <= 0) return ERR_NOT_ENOUGH_RESOURCES;
+
+    const status = this.terminal.send(RESOURCE_ENERGY, amount, target_room);
+    if (status == OK) {
+        console.log(`[${this.name}] Send ${amount} energy to ${target_room} with transaction cost ${cost} (${costRatio}%)`);
+    } else {
+        console.log(`[${this.name}] sendEnergy to ${target_room} failed: ${status.toStringStatus()}`);
+    }
+    return status;
 }
 
 Room.prototype.getStoredEnergy = function() {

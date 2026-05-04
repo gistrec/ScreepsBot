@@ -1,6 +1,28 @@
 const profiler = require('../screeps-profiler');
 
 
+// Ensure the factory has at least one decompression batch of batteries (50 = 500 energy).
+// Called when the room is under stress so processFactory can run produce(RESOURCE_ENERGY).
+function ensureFactoryHasBatteries(room) {
+    const factory = room.getFactory();
+    if (!factory) return;
+    if (factory.store.getUsedCapacity(RESOURCE_BATTERY) >= 50) return;
+
+    const storage = room.storage;
+    if (!storage || storage.store.getUsedCapacity(RESOURCE_BATTERY) < 50) return;
+
+    // Skip if a charger is already moving batteries to the factory.
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {filter: c =>
+        c.memory.role == 'charger'
+            && c.memory.transfer
+            && c.memory.transfer.resource_type == RESOURCE_BATTERY
+            && c.memory.transfer.target_id == factory.id
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    room.transfer(RESOURCE_BATTERY, "storage", "factory", 5000);
+}
+
 exports.balanceEnergy = function() {
     let veryRichRooms = [];
     let richRooms = [];
@@ -13,6 +35,14 @@ exports.balanceEnergy = function() {
         }
         if (!room.terminal) {
             continue
+        }
+
+        // When under attack or critically low on energy, prep the factory to decompress
+        // batteries back into energy on the next processFactory tick.
+        const underStress = room.memory.enemy_creeps
+            || room.energyAvailable < room.energyCapacityAvailable * 0.3;
+        if (underStress) {
+            ensureFactoryHasBatteries(room);
         }
 
         const energy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
@@ -76,11 +106,18 @@ exports.balanceEnergy = function() {
             }
         } while (false);
 
-        for (const poorRoom of poorRooms) {
+        // Sort poorest first so the most needy room gets the next available transfer.
+        const sortedPoorRooms = poorRooms.slice().sort((a, b) => {
+            return a.terminal.store.getUsedCapacity(RESOURCE_ENERGY) - b.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
+        });
+        for (const poorRoom of sortedPoorRooms) {
+            // Terminal has 10-tick cooldown after each send - only one send per rich room per tick.
+            if (richRoom.terminal.cooldown) break;
+
             // Left 30k energy in rich room
             const richRoomEnergy = richRoom.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
             if (richRoomEnergy < 30000) {
-                continue;
+                break;
             }
 
             const poorRoomFreeCapacity = poorRoom.terminal.store.getFreeCapacity();
@@ -90,8 +127,9 @@ exports.balanceEnergy = function() {
 
             const transferAmount = Math.min(richRoomEnergy - 30000, 30000);
 
-            richRoom.sendEnergy(poorRoom.name, transferAmount);
-            console.log(`[EnergyBalance] Sent ${transferAmount} energy from ${richRoom.name} to ${poorRoom.name}`);
+            if (richRoom.sendEnergy(poorRoom.name, transferAmount) == OK) {
+                break;
+            }
         }
     }
 }
@@ -191,17 +229,33 @@ exports.processFactory = function() {
             }
         } while (false);
 
-        // Process energy
+        // Process energy <-> battery in the factory itself.
+        // - Decompression (battery -> energy) is preferred when the room is under
+        //   stress: enemies present, or available energy critically low.
+        // - Compression (energy -> battery) requires 600 energy in the factory and
+        //   stops when the terminal already has enough batteries stockpiled.
         do {
-            const energy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
-            if (energy < 5000) {
-                break
+            const factoryEnergy  = factory.store.getUsedCapacity(RESOURCE_ENERGY);
+            const factoryBattery = factory.store.getUsedCapacity(RESOURCE_BATTERY);
+
+            const underStress = room.memory.enemy_creeps
+                || room.energyAvailable < room.energyCapacityAvailable * 0.3;
+
+            // Decompress: 50 batteries -> 500 energy.
+            if (underStress && factoryBattery >= 50) {
+                factory.produce(RESOURCE_ENERGY);
+                break;
             }
 
-            const battery = room.terminal.store.getUsedCapacity(RESOURCE_BATTERY);
-            if (battery < 10000) {
-                factory.produce(RESOURCE_BATTERY);
-            }
+            // Compress: 600 energy -> 50 batteries.
+            if (factoryEnergy < 600) break;
+
+            const terminalBattery = room.terminal
+                ? room.terminal.store.getUsedCapacity(RESOURCE_BATTERY)
+                : 0;
+            if (terminalBattery >= 10000) break;
+
+            factory.produce(RESOURCE_BATTERY);
         } while (false);
     }
 }
@@ -209,7 +263,7 @@ exports.processFactory = function() {
 
 exports.process = function() {
     if (Game.time % 10   == 0) { exports.processFactory(); }
-    if (Game.time % 400  == 0) { exports.balanceEnergy();  }
+    if (Game.time % 100  == 0) { exports.balanceEnergy();  }
     if (Game.time % 600  == 0) { exports.balanceMineral(); }
 }
 

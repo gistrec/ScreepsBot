@@ -22,10 +22,29 @@ const roleDefender = {
         const MAX_CREEPS_PER_WALL = 1;
 
         const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role === 'defender'});
-        const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_WALL || s.structureType == STRUCTURE_RAMPART })
-                          .sort((lhv, rhv) => { return rhv.hits - lhv.hits; });
+        const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_WALL || s.structureType == STRUCTURE_RAMPART });
+
+        // Координация с rampartDefender'ами и реакция на nuke'и: rampart'ы под угрозой ремонтируются в первую очередь.
+        const enemies = room.find(FIND_HOSTILE_CREEPS);
+        const nukes   = room.find(FIND_NUKES);
+        const isUnderThreat = (wall) => {
+            if (enemies.some(e => wall.pos.inRangeTo(e, 5)))    return true;
+            if (nukes.some(n   => wall.pos.inRangeTo(n.pos, 2))) return true;
+            return false;
+        };
+
+        // Сначала под угрозой (по возрастанию hits), затем остальные (по возрастанию hits).
+        // Используем .pop() в цикле ниже, поэтому сортируем по убыванию.
+        walls.sort((lhv, rhv) => {
+            const lThreat = isUnderThreat(lhv);
+            const rThreat = isUnderThreat(rhv);
+            if (lThreat != rThreat) return lThreat ? 1 : -1;  // под угрозой - в конец, чтобы pop'нуть первым
+            return rhv.hits - lhv.hits;                        // более повреждённые - в конец
+        });
+
         for (const chunk of _.chunk(creeps, MAX_CREEPS_PER_WALL)) {
             const wall = walls.pop();
+            if (!wall) break;
             for (const creep of chunk) {
                 creep.memory.repairing = wall.id;
             }

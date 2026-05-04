@@ -73,12 +73,19 @@ const roleRampartDefender = {
         }
 
         const target = (() => {
-            // Ищем крипа, который собирается бить стенку.
-            let enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == WORK)});
+            // Сначала хилеры - они нейтрализуют наш урон, без них остальные крипы умрут быстрее.
+            let enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == HEAL)});
             if (enemy) {
                 creep.memory.attack_id = enemy.id;
                 return enemy;
             }
+            // Затем работяги, они грызут стены.
+            enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == WORK)});
+            if (enemy) {
+                creep.memory.attack_id = enemy.id;
+                return enemy;
+            }
+            // Любые остальные с боевыми частями.
             enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == RANGED_ATTACK || body.type == ATTACK)});
             if (enemy) {
                 creep.memory.attack_id = enemy.id;

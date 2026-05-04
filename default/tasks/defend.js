@@ -5,21 +5,26 @@ exports.checkStatus = function(room) {
         return true;
     }
 
-    // Учитываем только опасных вражеских крипов
-    // Т.к. при LevelUp'е комнаты Rampart'ы тригерят DefendingMode
-    // Думаю, нужно как-то обработать этот момент.
-    const enemyCreeps = room.find(FIND_HOSTILE_CREEPS, {filter: creep => _.find(creep.body, bodyPart => [ATTACK, RANGED_ATTACK, CLAIM, WORK].includes(bodyPart.type)) && creep.owner.username != "Invader"});
+    // Учитываем всех опасных вражеских крипов, включая Invader - иначе при их атаках не включается defending mode.
+    const enemyCreeps = room.find(FIND_HOSTILE_CREEPS, {filter: creep => _.find(creep.body, bodyPart => [ATTACK, RANGED_ATTACK, CLAIM, WORK].includes(bodyPart.type))});
     room.memory.enemy_creeps = enemyCreeps.length;
 
     // Есть ли поврежденные барьеры.
-    const rampartDamaged = room.find(FIND_MY_STRUCTURES, {
+    const allRamparts = room.find(FIND_MY_STRUCTURES, {
         filter: (struct) => STRUCTURE_RAMPART == struct.structureType
-                            && (struct.hits < struct.hitsMax * 0.8)
-    })
-    const rampartSuperDamaged = room.find(FIND_MY_STRUCTURES, {
-        filter: (struct) => STRUCTURE_RAMPART == struct.structureType
-                            && (struct.hits < struct.hitsMax * 0.05)
-    })
+    });
+    const rampartDamaged = allRamparts.filter(r => r.hits < r.hitsMax * 0.8);
+    const rampartSuperDamaged = allRamparts.filter(r => r.hits < r.hitsMax * 0.05);
+
+    // Отслеживаем суммарный HP rampart'ов между тиками, чтобы поймать момент атаки
+    // ДО того, как HP рухнут до 5%. На больших rampart'ах (300M HP) разница между 5%
+    // и 0 - считанные секунды; ловим по дельте урона.
+    const rampartTotalHits = allRamparts.reduce((sum, r) => sum + r.hits, 0);
+    const lastTotalHits = room.memory.last_rampart_hits;
+    const hitsDelta = (lastTotalHits !== undefined) ? lastTotalHits - rampartTotalHits : 0;
+    room.memory.last_rampart_hits = rampartTotalHits;
+    const rampartUnderAttack = hitsDelta > 5000;
+
     // Есть ли поврежденные спавны.
     const spawnDamaged = room.find(FIND_MY_STRUCTURES, {
         filter: (struct) => [STRUCTURE_SPAWN, STRUCTURE_TOWER, STRUCTURE_TERMINAL, STRUCTURE_STORAGE, STRUCTURE_FACTORY].includes(struct.structureType)
@@ -27,7 +32,7 @@ exports.checkStatus = function(room) {
     });
     // Включаем SafeMode, если барьер или спаун повреждены.
     // Проверка на наличие врагов добавлена чтобы барьер нечайно сам не регрессировал + при апгрейде контроллера.
-    if ((rampartSuperDamaged.length || spawnDamaged.length) && enemyCreeps.length && controller.safeModeAvailable && !controller.upgradeBlocked) {
+    if ((rampartSuperDamaged.length || spawnDamaged.length || rampartUnderAttack) && enemyCreeps.length && controller.safeModeAvailable && !controller.upgradeBlocked) {
         const text = `Safe mode was enabled for room ${room.name}\n` +
                      `Is rampart damaged: ${rampartDamaged.length ? 'true' : 'false'}\n` +
                      `Is spawn damaged: ${spawnDamaged.length ? 'true' : 'false'}\n` +
@@ -66,10 +71,14 @@ exports.checkStatus = function(room) {
 }
 
 exports.fireTower = function(room) {
+    // Под атакой даём больший запас HP барьерам - 15k уже почти разрушен.
+    const repairThreshold = room.memory.enemy_creeps ? 100000 : 15000;
+
     const towers = room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_TOWER});
     for (const tower of towers) {
+        // Heal только в радиусе 20 - дальше эффективность падает до 25%, не стоит расхода энергии.
         const creep = tower.pos.findClosestByRange(FIND_MY_CREEPS, {
-            filter: (c) => c.hits != c.hitsMax && !c.memory.recycling
+            filter: (c) => c.hits != c.hitsMax && !c.memory.recycling && tower.pos.inRangeTo(c, 20)
         });
         if (creep) {
             tower.heal(creep);
@@ -92,7 +101,7 @@ exports.fireTower = function(room) {
 
         let rampart = tower.pos.findClosestByRange(FIND_STRUCTURES, {
             filter: (s) => (s.structureType == STRUCTURE_RAMPART || s.structureType == STRUCTURE_WALL)
-                        && (s.hits < 15000 /* || (s.room.name == "W9S39" && s.hits != s.hitsMax && Math.random() > 0.9) */)
+                        && (s.hits < repairThreshold)
         });
         if (rampart) {
             tower.repair(rampart);

@@ -115,6 +115,10 @@ exports.runReaction = function(room) {
     const resource2 = labs[room.name]["resources"][1];
     const expectedOutput = REACTIONS[resource1] && REACTIONS[resource1][resource2];
 
+    // Только одна транспортная задача за вызов: charger'ов обычно мало,
+    // лишние назначения упадут с "No creep to transfer".
+    let transfersQueued = 0;
+
     let reactionsQueued = 0;
     for (const lab_id of labs[room.name]["targets"]) try {
         const lab = Game.getObjectById(lab_id);
@@ -125,12 +129,14 @@ exports.runReaction = function(room) {
         // Если в target-лабе оказался "чужой" минерал (после boost-задачи или смены конфига) -
         // выгружаем его, иначе runReaction вернёт ERR_INVALID_TARGET и лаба простаивает.
         if (lab.mineralType && expectedOutput && lab.mineralType != expectedOutput) {
+            if (transfersQueued > 0) continue;
             const dump = (room.terminal && room.terminal.store.getFreeCapacity() > 0)
                 ? room.terminal
                 : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
             if (dump) {
                 console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab_id} (expected ${expectedOutput})`);
                 room.transfer(lab.mineralType, lab_id, dump.id);
+                transfersQueued++;
             }
             continue;
         }
@@ -147,14 +153,16 @@ exports.runReaction = function(room) {
             reactionsQueued++;
         }
 
-        // Перемещаем ресурсы из лабы, если она заполнена
-        if (lab.store.getUsedCapacity(lab.mineralType) > LAB_MINERAL_CAPACITY * 0.75) {
+        // Перемещаем ресурсы из лабы, если она заполнена. Только одна задача за вызов.
+        if (transfersQueued == 0 && lab.store.getUsedCapacity(lab.mineralType) > LAB_MINERAL_CAPACITY * 0.75) {
             if (room.terminal && room.terminal.store.getUsedCapacity(lab.mineralType) < 10000 && room.terminal.store.getFreeCapacity() > 10000) {
                 room.transfer(lab.mineralType, lab_id, room.terminal.id);
+                transfersQueued++;
                 continue;
             }
             if (room.storage && room.storage.store.getUsedCapacity(lab.mineralType) < 100000 && room.storage.store.getFreeCapacity() > 10000) {
                 room.transfer(lab.mineralType, lab_id, room.storage.id);
+                transfersQueued++;
                 continue;
             }
         }
@@ -278,7 +286,8 @@ exports.process = function() {
         // Обрабатываем только комнаты с лабами.
         if (!labs[roomName]) continue;
 
-        if (Game.time % 5 === 0) {
+        // Cooldown реакции (REACTION_TIME) минимум 15 тиков, поэтому опрос раз в 10 тиков ничего не упускает.
+        if (Game.time % 10 === 0) {
             exports.runReaction(room);
         }
         if (Game.time % 100 === 0) {

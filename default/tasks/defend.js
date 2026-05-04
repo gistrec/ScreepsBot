@@ -34,7 +34,14 @@ exports.checkStatus = function(room) {
                      `${enemyCreeps.length} enemy creeps`;
         console.log(text);
         Game.notify(text);
-        if (room.name != "W11S39") {
+
+        // Миграция со старого хардкода: W11S39 ранее был исключён из автоактивации safeMode.
+        // Сохраняем поведение, но через memory-флаг - чтобы было видно и можно было выключить.
+        if (room.name == "W11S39" && room.memory.disable_safe_mode === undefined) {
+            room.memory.disable_safe_mode = true;
+        }
+
+        if (!room.memory.disable_safe_mode) {
             room.controller.activateSafeMode();
         }
     }

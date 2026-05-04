@@ -57,6 +57,7 @@ const roleRampartDefender = {
         const energyStructures = utils.getEnergyStructures(room, spawn);
         spawn.spawnCreep(creepConfiguration["parts"], name, { memory: { role, boost_queue }, energyStructures});
         console.log(`Spawning new ${role} ${name} in ${room.name}`);
+        return false;
     },
     run: function(creep) {
         // Двигаемся к барьеру.
@@ -84,26 +85,32 @@ const roleRampartDefender = {
                 return enemy;
             }
         })();
-        const oldRange = rampart
-            ? rampart.pos.getRangeTo(target)
-            : 999;
 
-        // Ищем ближайший rampart к крипу.
-        const usedRamparts = creep.room.find(FIND_MY_CREEPS, {filter: (c) => c.memory.role == "rampart_defender"}).map(creep => creep.memory.rampart_id).filter(x => x);
-        rampart = creep.room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART})
-                            .sort((lhv, rhv) => lhv.pos.getRangeTo(target) - rhv.pos.getRangeTo(target))
-                            .shift(); // First
-        if (!rampart) {
-            return;
-        }
-
-        const newRange = rampart.pos.getRangeTo(target);
-        if (newRange < oldRange) {
-            creep.memory.rampart_id = rampart.id;
-        }
-
+        // Перевыбираем rampart только при наличии цели - без неё getRangeTo даст NaN и сравнение сломается.
         if (target) {
-            const result = creep.attack(target, );
+            const oldRange = rampart ? rampart.pos.getRangeTo(target) : 999;
+
+            // Исключаем rampart'ы, занятые другими defender'ами; свой текущий допускается.
+            const usedRamparts = creep.room.find(FIND_MY_CREEPS, {
+                filter: (c) => c.memory.role == "rampart_defender"
+                            && c.id != creep.id
+                            && c.memory.rampart_id
+            }).map(c => c.memory.rampart_id);
+
+            const candidate = creep.room.find(FIND_MY_STRUCTURES, {
+                filter: (s) => s.structureType == STRUCTURE_RAMPART
+                            && !usedRamparts.includes(s.id)
+            }).sort((lhv, rhv) => lhv.pos.getRangeTo(target) - rhv.pos.getRangeTo(target)).shift();
+
+            if (candidate) {
+                const newRange = candidate.pos.getRangeTo(target);
+                if (newRange < oldRange) {
+                    creep.memory.rampart_id = candidate.id;
+                    rampart = candidate;
+                }
+            }
+
+            creep.attack(target);
         }
     }
 };

@@ -14,6 +14,12 @@ const L = STRUCTURE_LINK
 const M = STRUCTURE_TERMINAL  // Market
 const C = STRUCTURE_LAB       // Chemistry
 
+const F = STRUCTURE_FACTORY
+const N = STRUCTURE_NUKER
+const O = STRUCTURE_OBSERVER
+const P = STRUCTURE_POWER_SPAWN
+const H = STRUCTURE_RAMPART   // Hardwall
+
 const spawn_offset_x = 8;
 const spawn_offset_y = 6;
 
@@ -39,32 +45,36 @@ const schemes = {
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
     ],
+    // Замена 3 ext: исходные позиции (10,8)/(9,9)/(8,10) занимают лабы из schemes[7],
+    // поэтому переезжают на (11,3)/(4,9)/(4,10) - тоже extension'ы в реальном layout.
     2: [
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
-        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+        [_, _, _, _, _, _, _, _, _, _, _, E, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, R, _, _, _],
         [_, _, _, _, _, _, _, _, R, E, R, _, _],
-        [_, _, _, _, _, _, _, R, _, _, E, R, _],
-        [_, _, _, _, _, _, R, E, _, E, R, _, _],
-        [_, _, _, _, _, _, _, R, E, R, _, _, _],
+        [_, _, _, _, _, _, _, R, _, _, _, R, _],
+        [_, _, _, _, E, _, R, E, _, _, R, _, _],
+        [_, _, _, _, E, _, _, R, _, R, _, _, _],
         [_, _, _, _, _, _, _, _, R, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
     ],
+    // Замена 2 ext: исходные позиции (9,8)/(8,9) занимают лабы из schemes[7],
+    // переезжают на (11,2)/(3,9).
     3: [
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
-        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+        [_, _, _, _, _, _, _, _, _, _, _, E, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, R, _],
         [_, _, _, _, _, _, _, _, _, _, R, E, R],
         [_, _, _, _, _, _, _, _, _, _, _, E, R],
         [_, _, _, _, _, _, _, _, _, _, _, E, R],
-        [_, _, _, _, _, _, _, _, T, E, _, _, _],
-        [_, _, _, _, _, _, _, _, E, _, _, _, _],
+        [_, _, _, _, _, _, _, _, T, _, _, _, _],
+        [_, _, _, E, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
@@ -114,10 +124,54 @@ const schemes = {
         [_, _, _, _, R, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
     ],
-    7: [],
-    8: []
+    // RCL 7: +10 ext, +1 spawn, +1 tower, +1 factory, +6 labs (RCL 6 unlocks 3, RCL 7 +3 -
+    // схемы 1..6 не размещают ни одной лабы, поэтому все 6 ставим здесь).
+    7: [
+        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+        [_, _, _, _, _, _, _, _, _, E, E, _, _],
+        [_, _, _, _, _, _, _, _, _, _, _, E, _],
+        [_, _, _, _, _, _, _, _, _, _, _, E, _],
+        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+        [_, _, _, _, _, _, _, F, _, _, _, _, _],
+        [_, _, _, _, B, _, _, _, _, _, _, _, _],
+        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+        [_, _, E, E, T, _, _, _, _, C, C, _, _],
+        [_, E, _, E, E, _, _, _, C, C, _, C, _],
+        [_, E, _, _, _, _, _, _, C, _, _, _, _],
+        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+        [_, _, _, _, _, _, _, _, _, _, _, _, _],
+    ],
+    // RCL 8: +9 ext, +1 spawn, +3 towers, nuker, observer, power spawn, +4 labs,
+    // плюс рампарты по периметру 13×13 и в "дырах" между структурами в стенке базы.
+    8: [
+        [H, H, H, H, H, H, H, H, H, H, H, H, H],
+        [H, _, _, _, H, _, _, _, H, _, _, N, H],
+        [H, _, _, H, _, H, P, H, _, H, O, _, H],
+        [H, _, H, _, _, _, _, _, _, _, H, _, H],
+        [H, H, _, _, T, _, _, _, _, _, _, H, H],
+        [H, _, H, _, _, _, _, _, _, _, H, _, H],
+        [H, _, T, _, _, _, _, _, _, _, T, _, H],
+        [H, _, H, _, _, _, _, _, _, _, H, _, H],
+        [H, H, _, _, _, _, _, _, _, _, _, H, H],
+        [H, _, H, _, _, _, _, _, _, _, H, _, H],
+        [H, _, E, H, E, H, B, H, _, H, C, C, H],
+        [H, E, E, E, H, E, E, E, H, C, C, E, H],
+        [H, H, H, H, H, H, H, H, H, H, H, H, H],
+    ],
 };
 
+
+// Extractor лежит на минерале - привязка к фиксированным координатам в schemes[]
+// невозможна (минерал в каждой комнате в своём месте). Ставим его отдельно по
+// результату FIND_MINERALS. RCL 6+.
+function buildExtractor(room) {
+    if (room.controller.level < 6) return;
+    const mineral = room.find(FIND_MINERALS).shift();
+    if (!mineral) return;
+    const hasExtractor = mineral.pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType == STRUCTURE_EXTRACTOR);
+    if (hasExtractor) return;
+    room.createConstructionSite(mineral.pos, STRUCTURE_EXTRACTOR);
+}
 
 exports.buildMissingStructures = function(room) {
     if (!room.controller || !room.controller.my) {
@@ -143,13 +197,24 @@ exports.buildMissingStructures = function(room) {
                     spawn.pos.y + y - spawn_offset_y,
                     room.name
                 );
+                // Рампарт может ставиться поверх любой структуры (свой/road/extension и т.п.),
+                // поэтому проверяем "уже есть рампарт", а не "пусто". Остальные типы остаются
+                // строго exclusive: createConstructionSite силится только на чистом тайле.
                 const structuresAtPos = pos.lookFor(LOOK_STRUCTURES);
-                if (structuresAtPos.length === 0) {
+                if (structure == STRUCTURE_RAMPART) {
+                    if (!structuresAtPos.some(s => s.structureType == STRUCTURE_RAMPART)) {
+                        room.createConstructionSite(pos, structure);
+                    }
+                } else if (structuresAtPos.length === 0
+                        || structuresAtPos.every(s => s.structureType == STRUCTURE_RAMPART)) {
+                    // На пустом тайле или на тайле где уже только рампарт - можно ставить.
                     room.createConstructionSite(pos, structure);
                 }
             }
         }
     }
+
+    buildExtractor(room);
 }
 
 exports.process = function() {

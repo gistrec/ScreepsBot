@@ -7,27 +7,44 @@ const taskResource = require('../tasks/resource');
 
 const MAX_PER_GAME = 6;
 
-// W8S35 ->  39:46:W8S35 5bbcac769099fc012e6357e9
-//           30:08:W8S35 5bbcac769099fc012e6357e7
-// W8S36 ->  32:24:W8S36 5bbcac769099fc012e6357ec
-//           30:26:W8S36 5bbcac769099fc012e6357ed
-// W8S38 ->  30:35:W8S38 5bbcac769099fc012e6357f4
-//           36:18:W8S38 5bbcac769099fc012e6357f3
+// Harvester - крип под remote mining: добывает в target_room, везёт в home_room.
+// Маршрут хранится в creep.memory: home_room, target_room и точки въезда home_entry/target_entry
+// (RoomPosition-сериализация вида {x,y,roomName}). Значения проставляются при спавне.
+//
+// Пример вызова из консоли / spawnCreeps:
+//   roleHarvester.spawn(spawn, {
+//       home_room:    "W8S35",
+//       target_room:  "W8S36",
+//       home_entry:   {x: 33, y: 48, roomName: "W8S35"},  // куда ехать когда полный
+//       target_entry: {x: 33, y: 1,  roomName: "W8S36"},  // куда ехать когда пустой
+//   });
 
 const roleHarvester = {
-    spawn: function(spawn) {
+    spawn: function(spawn, opts) {
+        if (!opts || !opts.home_room || !opts.target_room || !opts.home_entry || !opts.target_entry) {
+            console.log(`[harvester.spawn] Required opts: home_room, target_room, home_entry, target_entry`);
+            return false;
+        }
+
         const harvesters = _.filter(Game.creeps, (creep) => creep.memory.role == 'harvester');
         if (harvesters.length >= MAX_PER_GAME) {
             return false;
         }
         const name = 'Harvester' + Game.time;
-        const role = 'harvester'
+        const role = 'harvester';
         const parts = [
             WORK, WORK, WORK, WORK, MOVE, MOVE, MOVE, MOVE, MOVE, // 650
             CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE // 500
         ];
-        spawn.spawnCreep(parts, name, {memory: { role, /* boost: "GH2O" */ }});
-        console.log('Spawning new harvester: ' + name);
+        const memory = {
+            role,
+            home_room:    opts.home_room,
+            target_room:  opts.target_room,
+            home_entry:   opts.home_entry,
+            target_entry: opts.target_entry,
+        };
+        spawn.spawnCreep(parts, name, {memory});
+        console.log(`Spawning new harvester: ${name} (${opts.home_room} <-> ${opts.target_room})`);
         return true;
     },
 
@@ -46,11 +63,21 @@ const roleHarvester = {
         // Проверяем нужно ли получить ресурсы для выполнения основных задач
         taskResource.chechHarvesting(creep);
 
+        const homeRoom    = creep.memory.home_room;
+        const targetRoom  = creep.memory.target_room;
+        const homeEntry   = creep.memory.home_entry;
+        const targetEntry = creep.memory.target_entry;
+        if (!homeRoom || !targetRoom || !homeEntry || !targetEntry) {
+            // Старый креп без memory-полей или ошибка спавна - recycle.
+            creep.memory.recycling = true;
+            return;
+        }
+
         // Если есть ресурсы
 	    if(!creep.memory.harvesting) {
-            // Приезжаем в домашнюю комнату
-            if (creep.room.name != "W8S35") {
-                creep.moveTo(new RoomPosition(33, 1, "W8S36"), {
+            // Приезжаем в домашнюю комнату через target_entry (точка выхода из target_room).
+            if (creep.room.name != homeRoom) {
+                creep.moveTo(new RoomPosition(targetEntry.x, targetEntry.y, targetEntry.roomName), {
                     ignoreCreeps: true,
                     reusePath: 10,
                 });
@@ -65,9 +92,9 @@ const roleHarvester = {
             // Обновляем контроллер
             if (taskStructure.upgradeController(creep) == OK) return;
         } else {
-            // Едем в удаленную комнату
-            if (creep.room.name != "W8S36") {
-                    creep.moveTo(new RoomPosition(33, 48, "W8S35"), {
+            // Едем в удалённую комнату через home_entry (точка выхода из home_room).
+            if (creep.room.name != targetRoom) {
+                creep.moveTo(new RoomPosition(homeEntry.x, homeEntry.y, homeEntry.roomName), {
                     reusePath: 10,
                 });
                 return;

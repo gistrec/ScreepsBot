@@ -23,7 +23,7 @@ Object.defineProperty(Room.prototype, 'isDefending', {
     get() { return !!this.memory.defending; },
 });
 
-Room.prototype.transfer = function(resource_type, source_id, target_id, max_resource_count_in_target = null) {
+Room.prototype.transfer = function(resource_type, source_id, target_id, max_resource_count_in_target = null, min_resource_count_in_source = null) {
     if (source_id == "terminal") source_id = this.terminal.id;
     if (source_id == "storage")  source_id = this.storage.id;
     if (source_id == "factory") {
@@ -52,7 +52,7 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
         console.log(`[${this.name}] No creep to transfer`);
         return
     }
-    creep.memory.transfer = {resource_type, source_id, target_id, max_resource_count_in_target};
+    creep.memory.transfer = {resource_type, source_id, target_id, max_resource_count_in_target, min_resource_count_in_source};
     console.log(`[${this.name}] Creep ${creep.name} will transfer ${resource_type} resource`);
 }
 

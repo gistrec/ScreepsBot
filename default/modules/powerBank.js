@@ -92,6 +92,7 @@ exports.process = function() {
 function tryAllocateSquad(bank) {
     const minAmount = Memory.power_bank_min_amount || 2000;
     const maxHits   = Memory.power_bank_max_hits   || 5_000_000;
+    const maxDistance = Memory.power_bank_max_distance || 4;
 
     if (bank.amount < minAmount) return;
     if (bank.hits > maxHits) return;
@@ -110,7 +111,7 @@ function tryAllocateSquad(bank) {
       - Game.map.getRoomLinearDistance(b.name, bank.roomName)
     );
     const home = candidates[0];
-    if (Game.map.getRoomLinearDistance(home.name, bank.roomName) > 3) return;
+    if (Game.map.getRoomLinearDistance(home.name, bank.roomName) > maxDistance) return;
 
     if (home.energyAvailable < bodyCost(ATTACKER_BODY)) return;
 

@@ -1,12 +1,13 @@
 const profiler = require('../screeps-profiler');
 
 
-// Ensure the factory has at least one decompression batch of batteries (50 = 500 energy).
-// Called when the room is under stress so processFactory can run produce(RESOURCE_ENERGY).
+// Maintain a permanent battery buffer in the factory so decompression can start
+// immediately when stored energy crashes. Hysteresis: charger is dispatched only
+// when the factory drops below 3000 batteries, and tops it back up to 5000.
 function ensureFactoryHasBatteries(room) {
     const factory = room.getFactory();
     if (!factory) return;
-    if (factory.store.getUsedCapacity(RESOURCE_BATTERY) >= 50) return;
+    if (factory.store.getUsedCapacity(RESOURCE_BATTERY) >= 3000) return;
 
     const storage = room.storage;
     if (!storage || storage.store.getUsedCapacity(RESOURCE_BATTERY) < 50) return;
@@ -35,14 +36,6 @@ exports.balanceEnergy = function() {
         }
         if (!room.terminal) {
             continue
-        }
-
-        // When under attack or critically low on energy, prep the factory to decompress
-        // batteries back into energy on the next processFactory tick.
-        const underStress = room.hasHostiles
-            || room.energyAvailable < room.energyCapacityAvailable * 0.3;
-        if (underStress) {
-            ensureFactoryHasBatteries(room);
         }
 
         const energy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
@@ -77,7 +70,8 @@ exports.balanceEnergy = function() {
                 }
 
                 if (factory.store.getUsedCapacity(RESOURCE_BATTERY) > 10000) {
-                    richRoom.transfer(RESOURCE_BATTERY, "factory", "storage");
+                    // Leave the 5000 battery buffer in the factory for fast decompression.
+                    richRoom.transfer(RESOURCE_BATTERY, "factory", "storage", null, 5000);
                     break
                 }
 
@@ -209,6 +203,10 @@ exports.processFactory = function() {
         if (!factory) {
             continue;
         }
+
+        // Charger dispatch isn't gated by factory cooldown - keep the buffer topped up.
+        ensureFactoryHasBatteries(room);
+
         if (factory.cooldown) {
             continue
         }
@@ -230,19 +228,16 @@ exports.processFactory = function() {
         } while (false);
 
         // Process energy <-> battery in the factory itself.
-        // - Decompression (battery -> energy) is preferred when the room is under
-        //   stress: enemies present, or available energy critically low.
+        // - Decompression (battery -> energy) is preferred when stored energy in
+        //   the room (storage+terminal+factory) is critically low.
         // - Compression (energy -> battery) requires 600 energy in the factory and
         //   stops when the terminal already has enough batteries stockpiled.
         do {
             const factoryEnergy  = factory.store.getUsedCapacity(RESOURCE_ENERGY);
             const factoryBattery = factory.store.getUsedCapacity(RESOURCE_BATTERY);
 
-            const underStress = room.hasHostiles
-                || room.energyAvailable < room.energyCapacityAvailable * 0.3;
-
             // Decompress: 50 batteries -> 500 energy.
-            if (underStress && factoryBattery >= 50) {
+            if (room.getStoredEnergy() < 10000 && factoryBattery >= 50) {
                 factory.produce(RESOURCE_ENERGY);
                 break;
             }

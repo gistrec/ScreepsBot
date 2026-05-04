@@ -464,7 +464,7 @@ exports.transferResource = function(creep) {
     // Не теряем задачу - просто пропускаем тик; вернёмся, когда условие снимется.
     if (shouldInterruptStatefulTask(creep)) return ERR_NOT_FOUND;
 
-    const {resource_type, source_id, target_id, max_resource_count_in_target} = task;
+    const {resource_type, source_id, target_id, max_resource_count_in_target, min_resource_count_in_source} = task;
 
     // Выкидываем лишние ресурсы крипа.
     if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resource_type)) {
@@ -505,14 +505,25 @@ exports.transferResource = function(creep) {
             delete creep.memory.transfer;
         }
 
-        const creepCapacity = creep.store.getFreeCapacity();
         const sourceResourceCount = source.store.getUsedCapacity(resource_type);
         if (!sourceResourceCount) {
             console.log(`[${creep.room.name}] Not found resource ${resource_type} for transfer by creep ${creep.name}. Task was deleted.`);
             delete creep.memory.transfer;
             return ERR_NOT_FOUND;
         }
-        const result = exports.withdrawTarget(creep, source, resource_type, Math.min(creepCapacity, sourceResourceCount));
+
+        // Reserve a minimum stockpile in source (e.g., factory keeps a battery buffer).
+        const availableInSource = min_resource_count_in_source != null
+            ? sourceResourceCount - min_resource_count_in_source
+            : sourceResourceCount;
+        if (availableInSource <= 0) {
+            console.log(`[${creep.room.name}] Transfer of ${resource_type} completed - source reserved minimum (${sourceResourceCount}/${min_resource_count_in_source}).`);
+            delete creep.memory.transfer;
+            return OK;
+        }
+
+        const creepCapacity = creep.store.getFreeCapacity();
+        const result = exports.withdrawTarget(creep, source, resource_type, Math.min(creepCapacity, availableInSource));
         return OK;
     }
 }

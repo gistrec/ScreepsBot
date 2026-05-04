@@ -108,12 +108,19 @@ const roleCharger = {
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER]) == OK) return;
 
-                // Fallback на резервы: бутстрап (cheap miners медленные), миньоны простаивают
-                // или их нет - энергия зависает в storage/terminal/factory, charger не может
-                // заполнить extension'ы => deadlock без выхода. Тапаем резерв.
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY])  == OK) return;
+                // Fallback на резервы только если есть РЕАЛЬНЫЙ потребитель: ext/spawn/tower
+                // нуждается в энергии. Иначе charger будет вечно гонять storage<->terminal в
+                // насыщенной мирной комнате (terminal/storage сами в fill-цепочке).
+                const byType = utils.getMyStructuresByType(creep.room);
+                const realDemand =
+                       (byType[STRUCTURE_SPAWN]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
+                    || (byType[STRUCTURE_EXTENSION] || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
+                    || (byType[STRUCTURE_TOWER]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 350);
+                if (realDemand) {
+                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;
+                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
+                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY])  == OK) return;
+                }
             } else {
                 // Под атакой: контейнеры/дроп вне rampart небезопасны. Берём только из защищённых складов.
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;

@@ -72,11 +72,20 @@ visualiseRoom = function(room) {
     }
     room.visual.import(heavyVisualCache[room.name].string);
 
+    // На RCL 8 controller.progress и progressTotal undefined - даём дефолты, чтобы не было NaN.
+    const isMaxLevel = !room.controller.progressTotal;
+    const elapsedTicks = Game.time - statuses[room.name].start;
+    const progressDelta = (room.controller.progress || 0) - (statuses[room.name].progress || 0);
+    const energyPerTick = elapsedTicks > 0 ? (progressDelta / elapsedTicks).toFixed(1) : "0";
+    const upgradeText = isMaxLevel
+        ? "MAX (8)"
+        : `${(room.controller.progress / room.controller.progressTotal * 100).toFixed(2)}%`;
+
     // Live-данные обновляются каждый тик.
     room.visual
-        .text(`〽️ E/t: ${((room.controller.progress - statuses[room.name].progress) / (Game.time - statuses[room.name].start)).toFixed(1)}`, pos.x + 1, pos.y, {align: 'left'})
+        .text(`〽️ E/t: ${energyPerTick}`, pos.x + 1, pos.y, {align: 'left'})
         .text(`⚡ Energy ${room.energyAvailable}/${room.energyCapacityAvailable}`, pos.x + 1, pos.y + 1, {align: 'left'})
-        .text(`🏰 Upgrade ${(room.controller.progress / room.controller.progressTotal * 100).toFixed(2)}%`, pos.x + 1, pos.y + 2, {align: 'left'})
+        .text(`🏰 Upgrade ${upgradeText}`, pos.x + 1, pos.y + 2, {align: 'left'})
     if (room.memory.defending) {
         room.visual.text("⚔️ Defending mode: On", pos.x + 1, pos.y + 3, {color: 'red', align: 'left'})
     } else {

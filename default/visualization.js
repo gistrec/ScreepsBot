@@ -1,3 +1,5 @@
+const lab = require('modules/lab');
+
 let statuses = {}
 
 // Кеш экспортированных RoomVisual для тяжёлых статичных частей (башни, стенки).
@@ -166,11 +168,58 @@ visualiseMap = function(room) {
 
     Game.map.visual
         .text(`⚡${room.energyAvailable}/${room.energyCapacityAvailable}`, new RoomPosition(0, 4, room.name), {align: 'left', fontSize: 6})
-        .text(`🏰${room.controller.level} lvl - ${(room.controller.progress / room.controller.progressTotal * 100).toFixed(1)}%`, new RoomPosition(0, 10, room.name), {align: 'left', fontSize: 6})
+        .text(`🏰${room.controller.level} lvl - ${room.controller.progressTotal ? (room.controller.progress / room.controller.progressTotal * 100).toFixed(1) + "%" : "MAX"}`, new RoomPosition(0, 10, room.name), {align: 'left', fontSize: 6})
+
+    const ls = room.memory.lab_status;
+    if (ls && ls.output && ls.total > 0) {
+        let labText, labColor;
+        if (ls.forceEvac)      { labText = `🧪 ${ls.output}: evac`;       labColor = '#ff66ff'; }
+        else if (ls.dirty > 0) { labText = `🧪 ${ls.output}: dirty`;      labColor = '#ffaa00'; }
+        else if (ls.stuck > 0) { labText = `🧪 ${ls.output}: stuck`;      labColor = '#ff5555'; }
+        else if (ls.sourceLow) { labText = `🧪 ${ls.output}: idle`;       labColor = '#ffff00'; }
+        else                   { labText = `🧪 ${ls.output}: processing`; labColor = '#88ccff'; }
+        Game.map.visual.text(labText, new RoomPosition(0, 16, room.name), {color: labColor, align: 'left', fontSize: 6});
+    }
+
     if (room.memory.defending) {
         Game.map.visual.text("⚔️ On", new RoomPosition(0, 47, room.name), {color: '#FF0000', align: 'left', fontSize: 6})
     } else {
         Game.map.visual.text("⚔️ Off", new RoomPosition(0, 47, room.name), {color: '#00FF00', align: 'left', fontSize: 6})
+    }
+}
+
+// Рисует на карте потоки T1 минералов между лаб-комнатами по статической топологии
+// из modules/lab.js (require/produce/mineral). Источник для каждого require выбирается
+// так же, как в lab.transferResourcesBetweenRooms: сначала комната, где produce совпадает,
+// иначе — где mineral совпадает (raw).
+function visualiseLabFlows() {
+    const labRooms = lab.rooms;
+    if (!labRooms) return;
+
+    const findProducer = (mineral, excludeName) => {
+        for (const name in labRooms) {
+            if (name == excludeName) continue;
+            if (labRooms[name].produce == mineral) return name;
+        }
+        for (const name in labRooms) {
+            if (name == excludeName) continue;
+            if (labRooms[name].mineral == mineral) return name;
+        }
+        return null;
+    };
+
+    for (const consumerName in labRooms) {
+        const requires = labRooms[consumerName].require || [];
+        for (let i = 0; i < requires.length; i++) {
+            const mineral = requires[i];
+            const producerName = findProducer(mineral, consumerName);
+            if (!producerName) continue;
+
+            const from = new RoomPosition(25, 25, producerName);
+            const to   = new RoomPosition(25, 25, consumerName);
+            Game.map.visual.line(from, to, {color: '#88ccff', width: 0.6, opacity: 0.5, lineStyle: 'dashed'});
+            Game.map.visual.text(mineral, new RoomPosition(8, 28 + i * 6, consumerName), {color: '#88ccff', fontSize: 5, align: 'left'});
+        }
     }
 }
 
@@ -181,4 +230,5 @@ exports.process = function() {
         visualiseRoom(room);
         visualiseMap(room);
     }
+    visualiseLabFlows();
 }

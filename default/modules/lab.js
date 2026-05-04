@@ -54,7 +54,7 @@ const labs = {
     }
 };
 
-const rooms = {
+const rooms = exports.rooms = {
     "W9S37": {
         "mineral": "H",
         "require": ["O"],

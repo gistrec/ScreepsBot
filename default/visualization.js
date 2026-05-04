@@ -83,6 +83,27 @@ visualiseRoom = function(room) {
         room.visual.text("⚔️ Defending mode: Off", pos.x + 1, pos.y + 3, {color: 'green', align: 'left'})
     }
 
+    // Строка про лабы. Обновляется в lab.runReaction раз в 10 тиков, поэтому слегка лагает -
+    // достаточно, чтобы понимать почему лабы стоят.
+    const ls = room.memory.lab_status;
+    if (ls && ls.output && ls.total > 0) {
+        let text, color;
+        if (ls.dirty > 0) {
+            text  = `🧪 ${ls.output}: ${ls.dirty}/${ls.total} dirty (wrong mineral)`;
+            color = 'orange';
+        } else if (ls.stuck > 0) {
+            text  = `🧪 ${ls.output}: ${ls.stuck}/${ls.total} stuck (storage+terminal full)`;
+            color = '#ff5555';
+        } else if (ls.sourceLow) {
+            text  = `🧪 ${ls.output}: idle (no input mineral)`;
+            color = 'yellow';
+        } else {
+            text  = `🧪 ${ls.output}: ${ls.runnable + ls.cooling}/${ls.total} active`;
+            color = '#88ccff';
+        }
+        room.visual.text(text, pos.x + 1, pos.y + 4, {align: 'left', color});
+    }
+
     const expand = Game.flags["Expand"]
     if (expand) {
         room.visual.rect(expand.pos.x - 6, expand.pos.y - 6, 12, 12, {fill: 'transparent', stroke: 'green', lineStyle: 'dotted', opacity: 0.7});

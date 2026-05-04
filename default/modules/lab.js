@@ -98,6 +98,43 @@ const rooms = {
 // 5. Создаем Т2 минерал.
 // 6. Перемещаем минералы в хранилище.
 
+// Снимок состояния лаб для визуализации. Сохраняется в room.memory.lab_status,
+// читается из visualization.js. Обновляется на каждый вызов runReaction (раз в 10 тиков).
+function updateLabStatus(room, expectedOutput, source1, source2) {
+    const targetLabs = labs[room.name]["targets"].map(id => Game.getObjectById(id)).filter(l => l);
+    let cooling = 0, runnable = 0, stuck = 0, dirty = 0;
+    for (const lab of targetLabs) {
+        if (lab.mineralType && expectedOutput && lab.mineralType != expectedOutput) {
+            dirty++;
+            continue;
+        }
+        if (lab.cooldown > 0) {
+            cooling++;
+            continue;
+        }
+        if (expectedOutput && lab.store.getUsedCapacity(expectedOutput) > LAB_MINERAL_CAPACITY * 0.75) {
+            // Лаба заполнена выходным минералом - проверяем, можем ли вылить.
+            const terminalHasSpace = room.terminal && room.terminal.store.getUsedCapacity(expectedOutput) < 10000 && room.terminal.store.getFreeCapacity() > 10000;
+            const storageHasSpace  = room.storage  && room.storage.store.getUsedCapacity(expectedOutput)  < 100000 && room.storage.store.getFreeCapacity()  > 10000;
+            if (!terminalHasSpace && !storageHasSpace) {
+                stuck++;
+                continue;
+            }
+        }
+        runnable++;
+    }
+    const sourceLow = source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT
+                   || source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT;
+
+    room.memory.lab_status = {
+        output: expectedOutput,
+        total: targetLabs.length,
+        runnable, cooling, stuck, dirty,
+        sourceLow,
+        at: Game.time,
+    };
+}
+
 exports.runReaction = function(room) {
     if (room.memory.enemy_creeps) return;
 
@@ -108,12 +145,15 @@ exports.runReaction = function(room) {
         return;
     }
 
-    if (source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT) return;
-    if (source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT) return;
-
     const resource1 = labs[room.name]["resources"][0];
     const resource2 = labs[room.name]["resources"][1];
     const expectedOutput = REACTIONS[resource1] && REACTIONS[resource1][resource2];
+
+    // Обновляем статус ДО ранних возвратов, чтобы случай "нет входных минералов" попадал в визуализацию.
+    updateLabStatus(room, expectedOutput, source1, source2);
+
+    if (source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT) return;
+    if (source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT) return;
 
     // Только одна транспортная задача за вызов: charger'ов обычно мало,
     // лишние назначения упадут с "No creep to transfer".

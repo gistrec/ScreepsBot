@@ -81,6 +81,18 @@ Room.prototype.getStoredEnergy = function() {
     return count;
 }
 
+// Энергия + батарейки×10 во всех "складах". Используется для решения, не пора ли
+// прекратить майнинг: если стокпайл огромный, нет смысла гонять майнеров и charger'ов.
+Room.prototype.getTotalEnergy = function() {
+    let count = 0;
+    const stores = [this.storage, this.terminal, this.getFactory()].filter(s => s);
+    for (const s of stores) {
+        count += s.store.getUsedCapacity(RESOURCE_ENERGY);
+        count += s.store.getUsedCapacity(RESOURCE_BATTERY) * 10;
+    }
+    return count;
+}
+
 Room.prototype.getMineral = function() {
     if (this.memory.mineralType === undefined) {
         const mineral = this.find(FIND_MINERALS).shift();

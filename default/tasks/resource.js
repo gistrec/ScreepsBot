@@ -114,6 +114,58 @@ exports.fillNukerIfCalm = function(creep) {
     return exports.fillClosestStructure(creep, STRUCTURE_NUKER);
 }
 
+// Покупка G на маркете для nuker'а. Opt-in через memory.nuker_buy_max_price (cr/unit) -
+// без этого флага функция ничего не делает. Доп. memory:
+//   nuker_buy_target_amount  - целевой запас G в комнате (storage+terminal+nuker), default 5000
+//   Memory.nuker_buy_min_credits - не покупать если кредитов меньше, default 100k
+//
+// Используем sell-ордера: продавец платит energy за transaction cost, мы только cr.
+// Покупаем за один deal максимум доступного, throttle в main.js.
+exports.buyNukerGhodium = function(room) {
+    const nukers = utils.getMyStructuresByType(room)[STRUCTURE_NUKER] || [];
+    const nuker = nukers[0];
+    if (!nuker) return;
+    if (!room.terminal) return;
+
+    const maxPrice = room.memory.nuker_buy_max_price;
+    if (!maxPrice) return;
+
+    const targetAmount = room.memory.nuker_buy_target_amount || 5000;
+    const minCredits   = Memory.nuker_buy_min_credits || 100000;
+
+    const have = room.terminal.store.getUsedCapacity(RESOURCE_GHODIUM)
+              + (room.storage ? room.storage.store.getUsedCapacity(RESOURCE_GHODIUM) : 0)
+              + nuker.store.getUsedCapacity(RESOURCE_GHODIUM);
+    const need = targetAmount - have;
+    if (need <= 0) return;
+
+    if (Game.market.credits < minCredits) return;
+
+    const freeSpace = room.terminal.store.getFreeCapacity();
+    if (freeSpace < 100) return;
+
+    const orders = Game.market.getAllOrders({type: ORDER_SELL, resourceType: RESOURCE_GHODIUM})
+        .filter(o => o.price <= maxPrice && o.amount > 0)
+        .sort((a, b) => a.price - b.price);
+    if (orders.length === 0) {
+        console.log(`[${room.name}][NUKER] No G sell orders <= ${maxPrice} cr/unit`);
+        return;
+    }
+
+    const order = orders[0];
+    const maxAffordable = Math.floor((Game.market.credits - minCredits) / order.price);
+    if (maxAffordable <= 0) return;
+    const amount = Math.min(need, order.amount, freeSpace, maxAffordable);
+    if (amount <= 0) return;
+
+    const result = Game.market.deal(order.id, amount, room.name);
+    if (result == OK) {
+        console.log(`[${room.name}][NUKER] Bought ${amount} G @ ${order.price} cr/u (total ${Math.round(amount * order.price)} cr)`);
+    } else {
+        console.log(`[${room.name}][NUKER] market.deal failed: ${result}`);
+    }
+}
+
 // Раз в N тиков шедулим charger transfer: ghodium из storage/terminal -> nuker.
 // Энергию nuker'у заливает обычная fill-цепочка через fillNukerIfCalm.
 exports.scheduleNukerGhodium = function(room) {

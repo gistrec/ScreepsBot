@@ -104,6 +104,12 @@ function updateRoom(room) {
     if (Game.time % 1000 == 0) try {
         taskResource.scheduleNukerGhodium(room);
     } catch(err) { err.log() };
+
+    // Покупка G на маркете - opt-in через room.memory.nuker_buy_max_price.
+    // getAllOrders() дорогая, поэтому реже чем scheduleNukerGhodium.
+    if (Game.time % 5000 == 0) try {
+        taskResource.buyNukerGhodium(room);
+    } catch(err) { err.log() };
 }
 
 loop = function () {

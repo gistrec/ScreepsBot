@@ -111,16 +111,25 @@ exports.runReaction = function(room) {
     if (source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT) return;
     if (source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT) return;
 
+    let reactionsQueued = 0;
     for (const lab_id of labs[room.name]["targets"]) try {
         const lab = Game.getObjectById(lab_id);
-        if (!lab.id) {
-            console.log(`[${room.name}] Нет source лаборатории ${lab_id}`);
+        if (!lab) {
+            console.log(`[${room.name}] Нет target лаборатории ${lab_id}`);
             continue;
         }
         if (lab.cooldown != 0) {
             continue;
         }
-        lab.runReaction(source1, source2);
+        // Каждая реакция тратит LAB_REACTION_AMOUNT из каждого source. Останавливаемся,
+        // как только в source-лабе не остаётся ресурсов на следующую реакцию.
+        const requiredAmount = LAB_REACTION_AMOUNT * (reactionsQueued + 1);
+        if (source1.store.getUsedCapacity(source1.mineralType) < requiredAmount) break;
+        if (source2.store.getUsedCapacity(source2.mineralType) < requiredAmount) break;
+
+        if (lab.runReaction(source1, source2) == OK) {
+            reactionsQueued++;
+        }
 
         // Перемещаем ресурсы из лабы, если она заполнена
         if (lab.store.getUsedCapacity(lab.mineralType) > LAB_MINERAL_CAPACITY * 0.75) {
@@ -151,9 +160,9 @@ exports.refillLabs = function(room) {
 
     if (source1.store.getUsedCapacity(resource1) < 500) {
         // Ищем откуда можно достать ресурсы.
-        const warehouse = [room.storage.id, room.terminal.id]
-            .map(id => Game.getObjectById(id))
-            .filter(warehouse => warehouse.store.getUsedCapacity(resource1) > 500)
+        const warehouse = [room.storage, room.terminal]
+            .filter(s => s)
+            .filter(s => s.store.getUsedCapacity(resource1) > 500)
             .shift();
         if (warehouse) {
             room.transfer(resource1, warehouse.id, source1.id);
@@ -161,9 +170,9 @@ exports.refillLabs = function(room) {
     }
     if (source2.store.getUsedCapacity(resource2) < 500) {
         // Ищем откуда можно достать ресурсы.
-        const warehouse = [room.storage.id, room.terminal.id]
-            .map(id => Game.getObjectById(id))
-            .filter(warehouse => warehouse.store.getUsedCapacity(resource2) > 500)
+        const warehouse = [room.storage, room.terminal]
+            .filter(s => s)
+            .filter(s => s.store.getUsedCapacity(resource2) > 500)
             .shift();
         if (warehouse) {
             room.transfer(resource2, warehouse.id, source2.id);
@@ -179,9 +188,9 @@ exports.transferResourcesBetweenRooms = function() {
         for (const roomName in rooms) {
             // console.log(`${roomName} -> ${rooms[roomName]["mineral"]} ${rooms[roomName]["produce"]} -> ${mineral}`);
             if (rooms[roomName]["mineral"] == mineral || rooms[roomName]["produce"] == mineral) {
-                // Если нет терминала, то комната нас не интересует.
+                // Если комнаты нет в видимости или нет терминала - пропускаем.
                 const room = Game.rooms[roomName];
-                if (!room.terminal) continue;
+                if (!room || !room.terminal) continue;
 
                 return room;
             }
@@ -191,6 +200,7 @@ exports.transferResourcesBetweenRooms = function() {
 
     for (const roomName in rooms) {
         const room = Game.rooms[roomName];
+        if (!room) continue;
         for (const requireMineral of rooms[roomName]["require"]) {
             // Если нет терминала, то комната не интересует.
             if (!room.terminal) continue;
@@ -217,9 +227,14 @@ exports.transferResourcesBetweenRooms = function() {
             // Нужно либо переместить ресурсы из терминала, либо сначала заполнить терминал из хранилища.
             const sourceTerminalMineralCount = sourceRoom.terminal.store.getUsedCapacity(requireMineral);
             if (sourceTerminalMineralCount > 10000) {
+                if (sourceRoom.terminal.cooldown) {
+                    // Терминал на перезарядке - попробуем в следующем проходе.
+                    continue;
+                }
                 console.log(`[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName}`);
                 sourceRoom.terminal.send(requireMineral, 10000, roomName)
             } else {
+                if (!sourceRoom.storage) continue;
                 console.log(`[${sourceRoom.name}][LAB] Transfer 10k ${requireMineral} from Storage to Terminal`);
 
                 const transfer = {resource_type: requireMineral, source_id: sourceRoom.storage.id, target_id: sourceRoom.terminal.id, max_resource_count_in_target: 10000};

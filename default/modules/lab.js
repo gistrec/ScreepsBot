@@ -111,11 +111,27 @@ exports.runReaction = function(room) {
     if (source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT) return;
     if (source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT) return;
 
+    const resource1 = labs[room.name]["resources"][0];
+    const resource2 = labs[room.name]["resources"][1];
+    const expectedOutput = REACTIONS[resource1] && REACTIONS[resource1][resource2];
+
     let reactionsQueued = 0;
     for (const lab_id of labs[room.name]["targets"]) try {
         const lab = Game.getObjectById(lab_id);
         if (!lab) {
             console.log(`[${room.name}] Нет target лаборатории ${lab_id}`);
+            continue;
+        }
+        // Если в target-лабе оказался "чужой" минерал (после boost-задачи или смены конфига) -
+        // выгружаем его, иначе runReaction вернёт ERR_INVALID_TARGET и лаба простаивает.
+        if (lab.mineralType && expectedOutput && lab.mineralType != expectedOutput) {
+            const dump = (room.terminal && room.terminal.store.getFreeCapacity() > 0)
+                ? room.terminal
+                : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
+            if (dump) {
+                console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab_id} (expected ${expectedOutput})`);
+                room.transfer(lab.mineralType, lab_id, dump.id);
+            }
             continue;
         }
         if (lab.cooldown != 0) {
@@ -158,6 +174,9 @@ exports.refillLabs = function(room) {
     const resource1 = labs[room.name]["resources"][0];
     const resource2 = labs[room.name]["resources"][1];
 
+    // Не заливаем под завязку: 1500 хватит на ~30 циклов реакций, но не блокирует ценные ресурсы.
+    const REFILL_TARGET = 1500;
+
     if (source1.store.getUsedCapacity(resource1) < 500) {
         // Ищем откуда можно достать ресурсы.
         const warehouse = [room.storage, room.terminal]
@@ -165,7 +184,7 @@ exports.refillLabs = function(room) {
             .filter(s => s.store.getUsedCapacity(resource1) > 500)
             .shift();
         if (warehouse) {
-            room.transfer(resource1, warehouse.id, source1.id);
+            room.transfer(resource1, warehouse.id, source1.id, REFILL_TARGET);
         }
     }
     if (source2.store.getUsedCapacity(resource2) < 500) {
@@ -175,7 +194,7 @@ exports.refillLabs = function(room) {
             .filter(s => s.store.getUsedCapacity(resource2) > 500)
             .shift();
         if (warehouse) {
-            room.transfer(resource2, warehouse.id, source2.id);
+            room.transfer(resource2, warehouse.id, source2.id, REFILL_TARGET);
         }
     }
 }
@@ -184,18 +203,29 @@ exports.refillLabs = function(room) {
 // * В комнате-источнике есть 10к минералов.
 // * В комнате-приёмнике нет 10к минералов.
 exports.transferResourcesBetweenRooms = function() {
-    const findRoomWithMineral = (mineral) => {
-        for (const roomName in rooms) {
-            // console.log(`${roomName} -> ${rooms[roomName]["mineral"]} ${rooms[roomName]["produce"]} -> ${mineral}`);
-            if (rooms[roomName]["mineral"] == mineral || rooms[roomName]["produce"] == mineral) {
-                // Если комнаты нет в видимости или нет терминала - пропускаем.
-                const room = Game.rooms[roomName];
-                if (!room || !room.terminal) continue;
+    const stockOf = (room, mineral) => {
+        return (room.terminal ? room.terminal.store.getUsedCapacity(mineral) : 0)
+             + (room.storage  ? room.storage.store.getUsedCapacity(mineral)  : 0);
+    };
 
-                return room;
+    // Ищет комнату с наибольшим запасом нужного минерала, исключая саму комнату-получателя
+    // (комната может одновременно добывать и потреблять один и тот же ресурс - например, Z).
+    const findRoomWithMineral = (mineral, excludeRoomName) => {
+        let best = null;
+        let bestStock = 0;
+        for (const roomName in rooms) {
+            if (roomName == excludeRoomName) continue;
+            if (rooms[roomName]["mineral"] != mineral && rooms[roomName]["produce"] != mineral) continue;
+            const room = Game.rooms[roomName];
+            if (!room || !room.terminal) continue;
+
+            const stock = stockOf(room, mineral);
+            if (stock > bestStock) {
+                best = room;
+                bestStock = stock;
             }
         }
-        return null;
+        return best;
     }
 
     for (const roomName in rooms) {
@@ -206,22 +236,18 @@ exports.transferResourcesBetweenRooms = function() {
             if (!room.terminal) continue;
 
             // Если в комнате больше 5к минералов, то комната не нуждается в минералах.
-            const targetRoomMineralCount = [room.terminal, room.storage].reduce((mineralsCount, structure) => {
-                return mineralsCount + (structure ? structure.store.getUsedCapacity(requireMineral) : 0)
-            }, 0);
+            const targetRoomMineralCount = stockOf(room, requireMineral);
             if (targetRoomMineralCount > 5000) continue;
 
             // Ищем комнату, в которой производится необходимый ресурс.
-            const sourceRoom = findRoomWithMineral(requireMineral);
+            const sourceRoom = findRoomWithMineral(requireMineral, roomName);
             if (!sourceRoom) {
                 console.log(`[${roomName}][LAB] Not found another room with ${requireMineral}. Lab will idle`);
                 continue;
             }
 
-            // Если в комнате больше 10к минералов, то мы не можем транспортировать из неё минералы.
-            const sourceRoomMineralsCount = [sourceRoom.terminal, sourceRoom.storage].reduce((mineralsCount, structure) => {
-                return mineralsCount + (structure ? structure.store.getUsedCapacity(requireMineral) : 0)
-            }, 0);
+            // Минимум 10к на складах - иначе нет излишка, чтобы транспортировать.
+            const sourceRoomMineralsCount = stockOf(sourceRoom, requireMineral);
             if (sourceRoomMineralsCount < 10000) continue;
 
             // Нужно либо переместить ресурсы из терминала, либо сначала заполнить терминал из хранилища.

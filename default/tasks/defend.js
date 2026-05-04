@@ -1,3 +1,5 @@
+const utils = require('../utils');
+
 exports.checkStatus = function(room) {
     const controller = room.controller;
 
@@ -71,50 +73,57 @@ exports.checkStatus = function(room) {
 }
 
 exports.fireTower = function(room) {
+    const myStructuresByType = utils.getMyStructuresByType(room);
+    const towers = myStructuresByType[STRUCTURE_TOWER] || [];
+    if (towers.length == 0) return;
+
     // Под атакой даём больший запас HP барьерам - 15k уже почти разрушен.
     const repairThreshold = room.memory.enemy_creeps ? 100000 : 15000;
 
-    const towers = room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_TOWER});
+    // Считаем целевые списки один раз на комнату, потом каждая башня выбирает ближайшего
+    // через findClosestByRange(array). Раньше каждая башня делала по 4 find() - до 24 сканов
+    // на 6 башен; теперь 4 на всю комнату.
+    const woundedCreeps = room.find(FIND_MY_CREEPS, {
+        filter: (c) => c.hits != c.hitsMax && !c.memory.recycling
+    });
+    const hostileCreeps = !room.controller.safeMode ? room.find(FIND_HOSTILE_CREEPS) : [];
+
+    const structuresByType = utils.getStructuresByType(room);
+    const ramparts = structuresByType[STRUCTURE_RAMPART] || [];
+    const walls    = structuresByType[STRUCTURE_WALL]    || [];
+    const damagedBarriers = ramparts.concat(walls).filter(s => s.hits < repairThreshold);
+
+    const damagedRoadsContainers = !room.memory.enemy_creeps
+        ? (structuresByType[STRUCTURE_ROAD] || []).concat(structuresByType[STRUCTURE_CONTAINER] || [])
+            .filter(s => s.hitsMax - s.hits > 800)
+        : [];
+
     for (const tower of towers) {
         // Heal только в радиусе 20 - дальше эффективность падает до 25%, не стоит расхода энергии.
-        const creep = tower.pos.findClosestByRange(FIND_MY_CREEPS, {
-            filter: (c) => c.hits != c.hitsMax && !c.memory.recycling && tower.pos.inRangeTo(c, 20)
-        });
-        if (creep) {
-            tower.heal(creep);
+        const inRangeWounded = woundedCreeps.filter(c => tower.pos.inRangeTo(c, 20));
+        const wounded = tower.pos.findClosestByRange(inRangeWounded);
+        if (wounded) {
+            tower.heal(wounded);
             continue;
         }
 
-
-        if (!room.controller.safeMode) {
-            // Временная мера
-            let enemy = tower.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {
-                filter: (s) => (s.owner.username == "Invader") || s.pos.inRangeTo(tower, 13)
-            });
-            if (enemy){
-                // if (Game.time % 20 <= 5) {
-                    tower.attack(enemy);
-                    continue;
-                // }
+        if (!room.controller.safeMode && hostileCreeps.length > 0) {
+            const reachable = hostileCreeps.filter(s => s.owner.username == "Invader" || s.pos.inRangeTo(tower, 13));
+            const enemy = tower.pos.findClosestByRange(reachable);
+            if (enemy) {
+                tower.attack(enemy);
+                continue;
             }
         }
 
-        let rampart = tower.pos.findClosestByRange(FIND_STRUCTURES, {
-            filter: (s) => (s.structureType == STRUCTURE_RAMPART || s.structureType == STRUCTURE_WALL)
-                        && (s.hits < repairThreshold)
-        });
+        const rampart = tower.pos.findClosestByRange(damagedBarriers);
         if (rampart) {
             tower.repair(rampart);
             continue;
         }
 
-        // Восстанавливаем структуры
-        if (!room.memory.enemy_creeps) {
-            let damaged = tower.pos.findClosestByRange(FIND_STRUCTURES, {
-                filter: (s) => (s.structureType == STRUCTURE_ROAD || s.structureType == STRUCTURE_CONTAINER)
-                            && s.hitsMax - s.hits > 800 // При починке энергия не должна теряться
-            });
-
+        if (!room.memory.enemy_creeps && damagedRoadsContainers.length > 0) {
+            const damaged = tower.pos.findClosestByRange(damagedRoadsContainers);
             if (damaged) {
                 tower.repair(damaged);
                 continue;
@@ -161,6 +170,5 @@ exports.getClosestEmptyTower = function(creep, count) {
     return creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
         filter: (s) => s.structureType == STRUCTURE_TOWER
                     && s.store.getFreeCapacity(RESOURCE_ENERGY) > count
-                    && s.room.name == creep.room.name
     });
 }

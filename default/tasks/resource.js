@@ -1,4 +1,5 @@
 const taskRoom = require('./room');
+const utils = require('../utils');
 
 
 /**
@@ -67,11 +68,9 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
  * @param {Number} count     - количество ресурсов, для заполнения структуры
  */
 exports.fillClosestStructure = function(creep, structure, count = 0) {
-    // TODO: Добавить поиск по FIND_MY_STRUCTURES
-    const target = creep.pos.findClosestByRange(FIND_STRUCTURES, {
-        filter: (s) => s.structureType == structure
-                    && s.store.getFreeCapacity(RESOURCE_ENERGY) > count
-                    && s.room.name == creep.room.name
+    const candidates = utils.getStructuresByType(creep.room)[structure] || [];
+    const target = creep.pos.findClosestByRange(candidates, {
+        filter: (s) => s.store && s.store.getFreeCapacity(RESOURCE_ENERGY) > count
     });
     if (!target) return ERR_NOT_FOUND;
 
@@ -164,7 +163,7 @@ exports.harvestTarget = function(creep, target) {
  */
 exports.harvestClosest = function(creep) {
     const target = creep.pos.findClosestByRange(FIND_SOURCES, {
-        filter: (s) => s.room.name == creep.room.name && s.energy != 0
+        filter: (s) => s.energy != 0
     });
     if (!target) return ERR_NOT_FOUND;
 
@@ -224,13 +223,10 @@ exports.withdrawClosestResources = function(creep, structures, resourceType = RE
     if (resourceCount === 0) {
         resourceCount = creep.store.getFreeCapacity();
     }
-    const target = creep.pos.findClosestByRange(FIND_STRUCTURES, { // Контейнер общая структура
-        filter: (structure) => {
-            return structures.includes(structure.structureType)
-                && structure.room.name == creep.room.name
-                && structure.store
-                && structure.store.getUsedCapacity(resourceType) >= resourceCount
-        }
+    const byType = utils.getStructuresByType(creep.room);
+    const candidates = structures.flatMap(t => byType[t] || []);
+    const target = creep.pos.findClosestByRange(candidates, {
+        filter: (s) => s.store && s.store.getUsedCapacity(resourceType) >= resourceCount
     });
     if (!target) return ERR_NOT_FOUND;
 

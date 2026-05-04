@@ -46,9 +46,9 @@ exports.buildTarget = function(creep, target) {
  * 3. Строим постройку
  */
 exports.buildClosest = function(creep) {
-    const target = creep.pos.findClosestByRange(FIND_MY_CONSTRUCTION_SITES, {
-        filter: (s) => s.room.name == creep.room.name
-    });
+    // findClosestByRange по умолчанию ограничен текущей комнатой (range-based, без pathfinding),
+    // дополнительный фильтр по room.name был избыточен.
+    const target = creep.pos.findClosestByRange(FIND_MY_CONSTRUCTION_SITES);
     if (!target) return ERR_NOT_FOUND;
 
     return exports.buildTarget(creep, target);

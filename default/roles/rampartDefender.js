@@ -21,11 +21,12 @@ const COST_MATRIX_MINIMUM_WEIGHT = 1;
 const COST_MATRIX_UNWALKABLE_WEIGHT = 255;
 
 const applyRampartsToCostMatrix = function(roomName, costMatrix) {
-    if (!Game.rooms[roomName]) {
+    const room = Game.rooms[roomName];
+    if (!room) {
         return costMatrix;
     }
 
-    const ramparts = Game.rooms[roomName].find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART});
+    const ramparts = utils.getMyStructuresByType(room)[STRUCTURE_RAMPART] || [];
     for (const rampart of ramparts) {
         if (costMatrix.get(rampart.pos.x, rampart.pos.y) < COST_MATRIX_UNWALKABLE_WEIGHT) {
             costMatrix.set(rampart.pos.x, rampart.pos.y, COST_MATRIX_MINIMUM_WEIGHT);
@@ -104,10 +105,11 @@ const roleRampartDefender = {
                             && c.memory.rampart_id
             }).map(c => c.memory.rampart_id);
 
-            const candidate = creep.room.find(FIND_MY_STRUCTURES, {
-                filter: (s) => s.structureType == STRUCTURE_RAMPART
-                            && !usedRamparts.includes(s.id)
-            }).sort((lhv, rhv) => lhv.pos.getRangeTo(target) - rhv.pos.getRangeTo(target)).shift();
+            const allRamparts = utils.getMyStructuresByType(creep.room)[STRUCTURE_RAMPART] || [];
+            const candidate = allRamparts
+                .filter((s) => !usedRamparts.includes(s.id))
+                .sort((lhv, rhv) => lhv.pos.getRangeTo(target) - rhv.pos.getRangeTo(target))
+                .shift();
 
             if (candidate) {
                 const newRange = candidate.pos.getRangeTo(target);

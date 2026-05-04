@@ -41,6 +41,23 @@ exports.minerReplacementTtl = function(partsCount) {
     return partsCount * CREEP_SPAWN_TIME + WALK_BUFFER;
 };
 
+// Per-tick кеш структур, сгруппированных по типу. room.X не переживает тик в Screeps,
+// поэтому кеш сам собой инвалидируется. Сильно экономит CPU когда несколько вызовов подряд
+// делают find(FIND_STRUCTURES) с разными фильтрами по типу (charger - 7+ заполнений за тик).
+exports.getStructuresByType = function(room) {
+    if (!room._structuresByType) {
+        room._structuresByType = _.groupBy(room.find(FIND_STRUCTURES), 'structureType');
+    }
+    return room._structuresByType;
+};
+
+exports.getMyStructuresByType = function(room) {
+    if (!room._myStructuresByType) {
+        room._myStructuresByType = _.groupBy(room.find(FIND_MY_STRUCTURES), 'structureType');
+    }
+    return room._myStructuresByType;
+};
+
 exports.getEnergyStructures = function(room, spawn) {
     const sortByRange = ((first, second) => {
         const rangeFirst  = spawn.pos.getRangeTo(first);

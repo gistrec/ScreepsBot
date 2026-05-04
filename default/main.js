@@ -48,8 +48,12 @@ const moduleResourceBalance = require('modules/resourceBalance')
 const visualization = require('visualization');
 
 
+// Profiler оборачивает зарегистрированные функции; даже без profile() это лишний overhead.
+// Включается через консоль: `Memory.profiler_enabled = true` + обновление кода.
 const profiler = require('screeps-profiler');
-profiler.enable();
+if (Memory.profiler_enabled) {
+    profiler.enable();
+}
 
 
 function spawnCreeps(room) {

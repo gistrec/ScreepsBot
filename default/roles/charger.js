@@ -96,23 +96,28 @@ const roleCharger = {
             if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)   == OK) return;
             if (taskResource.fillClosestStructure(creep, STRUCTURE_NUKER)  == OK) return;
         } else {
-            // Основная задача:
-            // * Поднимать ресурсы
-            // * Забирать ресурсы из контейнера майнера.
+            // Основная задача: получить энергию для заполнения spawn/extension/etc.
             const link = Game.getObjectById(creep.memory.link_id)
 	        if (link && link.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
 	            taskResource.withdrawTarget(creep, link);
 	            return;
 	        }
-	        // Поднимаем ресурсы только если нет врагов.
+
             if (!creep.room.memory.enemy_creeps || creep.room.controller.safeMode) {
+                // Мирный режим: сначала pickup и контейнер у майнера (это его выход).
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER]) == OK) return;
-            }
 
-            if (creep.room.memory.enemy_creeps && !creep.room.controller.safeMode) {
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE]) == OK) return;
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY]) == OK) return;
+                // Fallback на резервы: бутстрап (cheap miners медленные), миньоны простаивают
+                // или их нет - энергия зависает в storage/terminal/factory, charger не может
+                // заполнить extension'ы => deadlock без выхода. Тапаем резерв.
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY])  == OK) return;
+            } else {
+                // Под атакой: контейнеры/дроп вне rampart небезопасны. Берём только из защищённых складов.
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY])  == OK) return;
                 if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
             }
         }

@@ -114,21 +114,26 @@ exports.fillNukerIfCalm = function(creep) {
     return exports.fillClosestStructure(creep, STRUCTURE_NUKER);
 }
 
-// Покупка G на маркете для nuker'а. Opt-in через memory.nuker_buy_max_price (cr/unit) -
-// без этого флага функция ничего не делает. Доп. memory:
-//   nuker_buy_target_amount  - целевой запас G в комнате (storage+terminal+nuker), default 5000
-//   Memory.nuker_buy_min_credits - не покупать если кредитов меньше, default 100k
+// Покупка G для nuker'а через свой ORDER_BUY (а не market.deal по чужим SELL).
+// Цена = min(max_price, cheapest_sell - 1), чтобы быть top-bid'ом и не переплачивать
+// весь спред. Платим 5% fee на сумму ордера, продавец платит transaction cost.
 //
-// Используем sell-ордера: продавец платит energy за transaction cost, мы только cr.
-// Покупаем за один deal максимум доступного, throttle в main.js.
+// Memory overrides:
+//   room.memory.nuker_buy_max_price      - потолок cr/unit, default 400 (0 = выключить)
+//   room.memory.nuker_buy_target_amount  - целевой запас G в комнате, default 5000
+//   Memory.nuker_buy_min_credits         - global floor по кредитам (с учётом fee), default 100k
+//
+// Если ордер уже висит для этой комнаты+ресурса - повторно не создаём. Когда G насыщен
+// (have >= target), активный ордер отменяем чтобы не висел и не съел fee при росте цены.
 exports.buyNukerGhodium = function(room) {
     const nukers = utils.getMyStructuresByType(room)[STRUCTURE_NUKER] || [];
     const nuker = nukers[0];
     if (!nuker) return;
     if (!room.terminal) return;
+    if (room.isDefending) return;
 
-    const maxPrice = room.memory.nuker_buy_max_price;
-    if (!maxPrice) return;
+    const maxPrice = (room.memory.nuker_buy_max_price !== undefined) ? room.memory.nuker_buy_max_price : 400;
+    if (maxPrice <= 0) return;
 
     const targetAmount = room.memory.nuker_buy_target_amount || 5000;
     const minCredits   = Memory.nuker_buy_min_credits || 100000;
@@ -137,32 +142,47 @@ exports.buyNukerGhodium = function(room) {
               + (room.storage ? room.storage.store.getUsedCapacity(RESOURCE_GHODIUM) : 0)
               + nuker.store.getUsedCapacity(RESOURCE_GHODIUM);
     const need = targetAmount - have;
-    if (need <= 0) return;
 
-    if (Game.market.credits < minCredits) return;
+    const existing = _.find(Game.market.orders, o =>
+        o.type == ORDER_BUY
+        && o.resourceType == RESOURCE_GHODIUM
+        && o.roomName == room.name
+        && o.remainingAmount > 0
+    );
 
-    const freeSpace = room.terminal.store.getFreeCapacity();
-    if (freeSpace < 100) return;
-
-    const orders = Game.market.getAllOrders({type: ORDER_SELL, resourceType: RESOURCE_GHODIUM})
-        .filter(o => o.price <= maxPrice && o.amount > 0)
-        .sort((a, b) => a.price - b.price);
-    if (orders.length === 0) {
-        console.log(`[${room.name}][NUKER] No G sell orders <= ${maxPrice} cr/unit`);
+    if (need <= 0) {
+        // Запасы достаточные - снимаем висящий ордер если он есть, чтобы fee не капал зря.
+        if (existing) {
+            Game.market.cancelOrder(existing.id);
+            console.log(`[${room.name}][NUKER] Cancelled BUY order (G stockpile reached target).`);
+        }
         return;
     }
 
-    const order = orders[0];
-    const maxAffordable = Math.floor((Game.market.credits - minCredits) / order.price);
-    if (maxAffordable <= 0) return;
-    const amount = Math.min(need, order.amount, freeSpace, maxAffordable);
-    if (amount <= 0) return;
+    if (existing) return;  // Уже стоит, ждём fill.
 
-    const result = Game.market.deal(order.id, amount, room.name);
+    if (room.terminal.store.getFreeCapacity() < 100) return;
+
+    const sellOrders = Game.market.getAllOrders({type: ORDER_SELL, resourceType: RESOURCE_GHODIUM})
+        .filter(o => o.amount > 0)
+        .sort((a, b) => a.price - b.price);
+    const lowestSell = sellOrders.length ? sellOrders[0].price : maxPrice;
+    const ourPrice = Math.min(maxPrice, Math.max(1, lowestSell - 1));
+
+    const fee = Math.ceil(ourPrice * need * 0.05);
+    if (Game.market.credits - fee < minCredits) return;
+
+    const result = Game.market.createOrder({
+        type: ORDER_BUY,
+        resourceType: RESOURCE_GHODIUM,
+        price: ourPrice,
+        totalAmount: need,
+        roomName: room.name,
+    });
     if (result == OK) {
-        console.log(`[${room.name}][NUKER] Bought ${amount} G @ ${order.price} cr/u (total ${Math.round(amount * order.price)} cr)`);
+        console.log(`[${room.name}][NUKER] Posted BUY ${need} G @ ${ourPrice} cr/u (fee ~${fee} cr, lowest sell ${lowestSell}).`);
     } else {
-        console.log(`[${room.name}][NUKER] market.deal failed: ${result}`);
+        console.log(`[${room.name}][NUKER] createOrder failed: ${result}`);
     }
 }
 

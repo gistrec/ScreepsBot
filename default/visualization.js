@@ -223,6 +223,27 @@ function visualiseLabFlows() {
     }
 }
 
+// Стрелки power-bank операций: home_room → комната банка. Цвет по статусу:
+//   attacking - красный (squad едет/бьёт)
+//   looting   - оранжевый (carriers везут power)
+// pending банки без назначенного home_room не рисуются (squad ещё не выделен).
+function visualisePowerBankFlows() {
+    if (!Memory.power_banks) return;
+
+    for (const id in Memory.power_banks) {
+        const bank = Memory.power_banks[id];
+        if (!bank.home_room) continue;
+        if (bank.status !== 'attacking' && bank.status !== 'looting') continue;
+
+        const color = bank.status === 'attacking' ? '#ff4444' : '#ffaa00';
+        const from = new RoomPosition(25, 25, bank.home_room);
+        const to   = new RoomPosition(bank.x, bank.y, bank.roomName);
+        Game.map.visual.line(from, to, {color, width: 0.8, opacity: 0.7, lineStyle: 'dashed'});
+        Game.map.visual.text(`⚡${bank.amount}`, new RoomPosition(bank.x, Math.max(0, bank.y - 4), bank.roomName), {color, fontSize: 5, align: 'center'});
+        Game.map.visual.text(bank.status, new RoomPosition(bank.x, Math.min(49, bank.y + 4), bank.roomName), {color, fontSize: 4, align: 'center'});
+    }
+}
+
 exports.process = function() {
     for (const roomName in Game.rooms) {
         const room = Game.rooms[roomName];
@@ -231,4 +252,5 @@ exports.process = function() {
         visualiseMap(room);
     }
     visualiseLabFlows();
+    visualisePowerBankFlows();
 }

@@ -20,14 +20,29 @@ exports.checkStatus = function(room) {
     const rampartDamaged      = allRamparts.filter(r => r.hits < r.hitsMax * 0.8);
     const rampartSuperDamaged = allRamparts.filter(r => r.hits < r.hitsMax * 0.05);
 
-    // Отслеживаем суммарный HP rampart'ов между тиками, чтобы поймать момент атаки
-    // ДО того, как HP рухнут до 5%. На больших rampart'ах (300M HP) разница между 5%
-    // и 0 - считанные секунды; ловим по дельте урона.
-    const rampartTotalHits = allRamparts.reduce((sum, r) => sum + r.hits, 0);
-    const lastTotalHits = room.memory.last_rampart_hits;
-    const hitsDelta = (lastTotalHits !== undefined) ? lastTotalHits - rampartTotalHits : 0;
-    room.memory.last_rampart_hits = rampartTotalHits;
-    const rampartUnderAttack = hitsDelta > 5000;
+    // Per-rampart дельта между тиками. Идея: decay батчится по 300 HP на rampart раз в
+    // RAMPART_DECAY_TIME (100t), поэтому максимальный drop одного рампарта за тик от decay
+    // = 300. Любой single drop > 1000 = реальный урон от атакера/dismantler'а, независимо
+    // от того есть ли в комнате враги (могли отойти за кадр, могут бить с другой клетки).
+    //
+    // Раньше использовали суммарный delta всех ramparts > 5000 - это false-fired на
+    // синхронных decay'ах: 72 рампарта × 300 = 21.6k drop без какой-либо атаки.
+    if (!room.memory.rampart_hits_by_id) room.memory.rampart_hits_by_id = {};
+    const lastHits = room.memory.rampart_hits_by_id;
+    let maxRampartDrop = 0;
+    const nextHits = {};
+    for (const r of allRamparts) {
+        const prev = lastHits[r.id];
+        if (prev !== undefined) {
+            const drop = prev - r.hits;
+            if (drop > maxRampartDrop) maxRampartDrop = drop;
+        }
+        nextHits[r.id] = r.hits;
+    }
+    room.memory.rampart_hits_by_id = nextHits;
+    const rampartUnderAttack = maxRampartDrop > 1000 && enemyCreeps.length > 0;
+    // Migration: чистим старое суммарное поле от прежней версии эвристики.
+    if (room.memory.last_rampart_hits !== undefined) delete room.memory.last_rampart_hits;
 
     // Есть ли поврежденные спавны/башни/терминал/storage/factory.
     const criticalTypes = [STRUCTURE_SPAWN, STRUCTURE_TOWER, STRUCTURE_TERMINAL, STRUCTURE_STORAGE, STRUCTURE_FACTORY];
@@ -71,7 +86,7 @@ exports.checkStatus = function(room) {
             return;
         }
         const text = `Defending mode was enabled for room ${room.name}\n` +
-                     `${enemyCreeps.length} enemy creeps, rampart hits delta: ${hitsDelta}`;
+                     `${enemyCreeps.length} enemy creeps, max rampart drop: ${maxRampartDrop}`;
         console.log(text);
         Game.notify(text);
         room.memory.defending = true;

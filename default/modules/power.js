@@ -73,10 +73,9 @@ function spawnDeadOperators() {
 
 // Поэтапный upgrade операторов: GENERATE_OPS до уровня 3, потом полезные дополнительные.
 const UPGRADE_PRIORITY = [
-    [PWR_GENERATE_OPS,       3],
-    [PWR_OPERATE_SPAWN,      1],
-    [PWR_OPERATE_TOWER,      1],
-    [PWR_GENERATE_SAFE_MODE, 1],
+    [PWR_GENERATE_OPS,  3],
+    [PWR_OPERATE_SPAWN, 1],
+    [PWR_OPERATE_TOWER, 1],
 ];
 function upgradeOperators() {
     if (!Memory.operators) return;

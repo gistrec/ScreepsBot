@@ -1,4 +1,5 @@
 const lab = require('modules/lab');
+const utils = require('utils');
 
 let statuses = {}
 
@@ -185,6 +186,17 @@ visualiseMap = function(room) {
         Game.map.visual.text("⚔️ On", new RoomPosition(0, 47, room.name), {color: '#FF0000', align: 'left', fontSize: 6})
     } else {
         Game.map.visual.text("⚔️ Off", new RoomPosition(0, 47, room.name), {color: '#00FF00', align: 'left', fontSize: 6})
+    }
+
+    // Компактный nuker-индикатор справа на той же строке. Зелёный - готов к выстрелу
+    // (E=100, G=100, cd=0), красный - не готов (что-то не залито или cooldown).
+    const nuker = (utils.getMyStructuresByType(room)[STRUCTURE_NUKER] || [])[0];
+    if (nuker) {
+        const eFull = nuker.store.getFreeCapacity(RESOURCE_ENERGY)  === 0;
+        const gFull = nuker.store.getFreeCapacity(RESOURCE_GHODIUM) === 0;
+        const ready = eFull && gFull && (nuker.cooldown || 0) === 0;
+        const color = ready ? '#00FF00' : '#FF0000';
+        Game.map.visual.text("☢", new RoomPosition(49, 46, room.name), {color, align: 'right', fontSize: 10});
     }
 }
 

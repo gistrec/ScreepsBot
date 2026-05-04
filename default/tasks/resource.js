@@ -2,6 +2,21 @@ const taskRoom = require('./room');
 const utils = require('../utils');
 
 
+// Нужно ли прервать долгоживущую stateful-задачу (transfer, disassemble) - чтобы
+// освободить charger'а на более срочное действие. Возвращает true только если
+// креп НЕ везёт минералы: иначе они потеряются (стандартная fill-цепочка их не возьмёт).
+// Прерывание не отменяет задачу, просто пропускает её на текущем тике.
+function shouldInterruptStatefulTask(creep) {
+    const room = creep.room;
+    const underAttack = room.memory.enemy_creeps && !room.controller.safeMode;
+    const lowEnergy   = room.energyAvailable < room.energyCapacityAvailable * 0.3;
+    if (!underAttack && !lowEnergy) return false;
+
+    // Безопасно прерывать только если в трюме одна энергия или пусто.
+    return creep.store.getUsedCapacity() == creep.store.getUsedCapacity(RESOURCE_ENERGY);
+}
+
+
 /**
  * Функция проверяет может ли бот совершать основную задачу
  * или ему нужно поднять/добыть ресурсов
@@ -287,6 +302,10 @@ exports.disassembleResource = function(creep) {
     const resourceType = creep.memory.disassemble;
     if (!resourceType) return ERR_NOT_FOUND;
 
+    // INTERRUPT: при атаке/энерго-кризисе charger нужнее на оборонной/срочной заливке.
+    // Не теряем задачу - просто пропускаем тик; вернёмся, когда условие снимется.
+    if (shouldInterruptStatefulTask(creep)) return ERR_NOT_FOUND;
+
     // Выкидываем лишние ресурсы крипа.
     if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resourceType)) {
         creep.say(`Remove extra resource`);
@@ -325,6 +344,10 @@ exports.disassembleResource = function(creep) {
 exports.transferResource = function(creep) {
     const task = creep.memory.transfer;
     if (!task) return ERR_NOT_FOUND;
+
+    // INTERRUPT: при атаке/энерго-кризисе charger нужнее на оборонной/срочной заливке.
+    // Не теряем задачу - просто пропускаем тик; вернёмся, когда условие снимется.
+    if (shouldInterruptStatefulTask(creep)) return ERR_NOT_FOUND;
 
     const {resource_type, source_id, target_id, max_resource_count_in_target} = task;
 

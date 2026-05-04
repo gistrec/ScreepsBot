@@ -23,7 +23,6 @@ const rooms = [                         "W10S33",
 ];
 
 let current_room_index = 0;
-let power_banks = {/* roomName => powerBank */};
 
 
 const get_observers = function() {
@@ -44,26 +43,67 @@ const get_observers = function() {
     }).filter(observer => observer);
 }
 
+// Power bank registry. Каждое сканирование пишет/обновляет/удаляет запись по id банка.
+// Поля: { id, roomName, x, y, hits, amount, decayAt, status, squad }.
+// status переключается из observer'a и powerBank-модуля:
+//   'pending'   - банк только найден, ещё никого не послали
+//   'attacking' - squad назначен и едет/бьёт
+//   'looting'   - банк уничтожен, дроп ждёт carrier'ов
+//   'done'      - всё забрали (cleanup'ится)
 exports.process = function() {
-    return;
+    if (!Memory.power_banks) Memory.power_banks = {};
 
-    // Обрабатываем предыдущий результат.
+    // Обрабатываем результат предыдущего observeRoom (комната видна 1 тик после observe).
     const room_name = rooms[current_room_index];
     const room = Game.rooms[room_name];
     if (room) {
         const power_bank = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_POWER_BANK}).shift();
         if (power_bank) {
-            console.log(`[${room_name}] PowerBank has been found. ${power_bank.power} power, ${power_bank.ticksToDecay} ttl.`);
-            power_banks[room_name] = power_bank;
+            const existing = Memory.power_banks[power_bank.id];
+            if (!existing) {
+                console.log(`[${room_name}] PowerBank found: ${power_bank.power} power, ${power_bank.hits} HP, ${power_bank.ticksToDecay} ttl.`);
+                Memory.power_banks[power_bank.id] = {
+                    id:       power_bank.id,
+                    roomName: room_name,
+                    x:        power_bank.pos.x,
+                    y:        power_bank.pos.y,
+                    hits:     power_bank.hits,
+                    amount:   power_bank.power,
+                    decayAt:  Game.time + power_bank.ticksToDecay,
+                    status:   'pending',
+                    squad:    [],
+                };
+            } else {
+                // Refresh live данных. status/squad не трогаем - ими владеет powerBank-модуль.
+                existing.hits     = power_bank.hits;
+                existing.decayAt  = Game.time + power_bank.ticksToDecay;
+            }
         } else {
-            delete power_banks[room_name];
+            // Банка в комнате больше нет. Запись с status=='looting' оставляем (carrier'ы
+            // ещё едут забирать дроп), остальные удаляем.
+            for (const id in Memory.power_banks) {
+                if (Memory.power_banks[id].roomName == room_name
+                 && Memory.power_banks[id].status != 'looting') {
+                    delete Memory.power_banks[id];
+                }
+            }
         }
     }
 
-    // Обозреваем комнату.
-    current_room_index = (current_room_index < rooms.length)
-        ? current_room_index + 1
-        : 0;
+    // Cleanup: protacted-status или истёкшие записи. Реже - find выше уже подчищает в норме.
+    if (Game.time % 100 === 0) {
+        for (const id in Memory.power_banks) {
+            const entry = Memory.power_banks[id];
+            if (entry.status === 'done' || entry.decayAt < Game.time) {
+                delete Memory.power_banks[id];
+            }
+        }
+    }
+
+    // Сканируем следующую комнату по кругу. Видимость появится в следующем тике.
+    current_room_index = (current_room_index + 1) % rooms.length;
     const observers = get_observers();
-    observers[0].observeRoom(rooms[current_room_index]);
+    if (observers.length > 0) {
+        observers[0].observeRoom(rooms[current_room_index]);
+    }
 }

@@ -33,6 +33,11 @@ const roleRampartDefender    = require('roles/rampartDefender');
 const roleSafeModeGenerator  = require('roles/safeModeGenerator');
 const roleControllerUpgrader = require('roles/controllerUpgrader');
 
+const rolePowerBankAttacker  = require('roles/powerBankAttacker');
+const rolePowerBankHealer    = require('roles/powerBankHealer');
+const rolePowerCarrier       = require('roles/powerCarrier');
+const roleOperator           = require('roles/operator');
+
 const taskDefend   = require('tasks/defend');
 const taskCreep    = require('tasks/creep');
 const taskRoom     = require('tasks/room');
@@ -45,6 +50,8 @@ const moduleBuild = require('modules/build');
 const moduleObserver  = require('modules/observer');
 const moduleExpansion = require('modules/expansion');
 const moduleResourceBalance = require('modules/resourceBalance')
+const modulePower     = require('modules/power');
+const modulePowerBank = require('modules/powerBank');
 
 const visualization = require('visualization');
 
@@ -122,6 +129,8 @@ loop = function () {
     try { moduleObserver.process();        } catch (err) { err.log() }
     try { moduleExpansion.process();       } catch (err) { err.log() }
     try { moduleResourceBalance.process(); } catch (err) { err.log() }
+    try { modulePower.process();           } catch (err) { err.log() }
+    try { modulePowerBank.process();       } catch (err) { err.log() }
 
     try { visualization.process();   } catch (err) { err.log() }
 
@@ -212,10 +221,29 @@ loop = function () {
                 roleSafeModeGenerator.run(creep);
                 break;
 
+            case 'powerBankAttacker':
+                rolePowerBankAttacker.run(creep);
+                break;
+
+            case 'powerBankHealer':
+                rolePowerBankHealer.run(creep);
+                break;
+
+            case 'powerCarrier':
+                rolePowerCarrier.run(creep);
+                break;
+
             default:
                 creep.say('Err role');
         }
     } catch(err) { err.log() };
+
+    // PowerCreeps - отдельный loop, не пересекается с Game.creeps.
+    for (const name in Game.powerCreeps) try {
+        const pc = Game.powerCreeps[name];
+        if (!pc.ticksToLive) continue;  // ещё не задеплоен.
+        roleOperator.run(pc);
+    } catch (err) { err.log() };
 }
 
 module.exports.loop = function() {

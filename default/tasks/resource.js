@@ -213,6 +213,50 @@ exports.scheduleNukerGhodium = function(room) {
 }
 
 
+// Power_spawn fill цикл (Phase 5). Power_spawn держит ENERGY_REGEN_TIME для процессинга,
+// поэтому ему регулярно нужны и energy (заливает charger в fill chain), и power (его
+// возит charger через transfer task из storage/terminal).
+
+// Раз в N тиков шедулим charger transfer: power из terminal/storage -> power_spawn.
+// Аналог scheduleNukerGhodium, но для RESOURCE_POWER. Throttle в main.js / modules/power.js.
+exports.schedulePowerSpawnPower = function(room) {
+    if (room.isUnderAttack) return;
+    if (room.memory.power_disabled) return;
+
+    const ps = (utils.getMyStructuresByType(room)[STRUCTURE_POWER_SPAWN] || [])[0];
+    if (!ps) return;
+
+    const minPower = room.memory.power_spawn_min_power || 50;
+    if (ps.store.getUsedCapacity(RESOURCE_POWER) >= minPower) return;
+    if (ps.store.getFreeCapacity(RESOURCE_POWER) <= 0) return;
+
+    const source = [room.terminal, room.storage].find(s => s && s.store.getUsedCapacity(RESOURCE_POWER) >= 50);
+    if (!source) return;
+
+    // Не дублируем если charger уже везёт power в этот power_spawn.
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {
+        filter: c => c.memory.role == 'charger'
+                  && c.memory.transfer
+                  && c.memory.transfer.target_id == ps.id
+                  && c.memory.transfer.resource_type == RESOURCE_POWER
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    console.log(`[${room.name}] Scheduling power fill for power_spawn.`);
+    room.transfer(RESOURCE_POWER, source.id, ps.id);
+}
+
+// Заливает energy в power_spawn если он не полон. Возвращает OK когда задача найдена,
+// чтобы выпасть из fill-chain. Включается в charger peace branch перед fillNukerIfCalm.
+exports.fillPowerSpawnEnergy = function(creep) {
+    if (creep.room.memory.power_disabled) return ERR_NOT_FOUND;
+    const ps = (utils.getMyStructuresByType(creep.room)[STRUCTURE_POWER_SPAWN] || [])[0];
+    if (!ps) return ERR_NOT_FOUND;
+    if (ps.store.getFreeCapacity(RESOURCE_ENERGY) < 1000) return ERR_NOT_FOUND;
+    return exports.fillTarget(creep, ps, RESOURCE_ENERGY);
+}
+
+
 exports.pickupTarget = function(creep, target) {
     if (creep.memory.action != 'charge') {
         creep.memory.action = 'charge';

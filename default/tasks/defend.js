@@ -55,25 +55,33 @@ exports.checkStatus = function(room) {
         }
     }
 
-    // Если существует хотя бы одна угроза, то активируем защитный режим
-    // В этом режиме создаются Defender'ы
-    if (rampartDamaged.length || spawnDamaged.length || enemyCreeps.length || controller.safeMode) {
-        // Обновляем "последний тик активной угрозы" - используется для фильтра
-        // безопасных фоновых задач (например, fill nuker).
-        room.memory.last_attack_at = Game.time;
+    // Активная угроза - что-то прямо сейчас. Повреждённые барьеры/спавны сюда НЕ входят:
+    // в стабильной комнате они почти всегда ниже 100% (свежие рампарты, недоремонт после
+    // прошлой атаки) и при старой логике комната зависала в defending навечно.
+    const threatActive = enemyCreeps.length > 0 || rampartUnderAttack;
 
+    if (threatActive) {
+        room.memory.last_attack_at = Game.time;
+    }
+
+    // Hold-down: держим defending ещё DEFEND_HOLD_TICKS после последней угрозы, чтобы
+    // не флапать когда враг на тик скрылся из видимости (за рампартом, в exit-tile и т.п.).
+    const DEFEND_HOLD_TICKS = 50;
+    const inHoldDown = room.memory.last_attack_at !== undefined
+                    && (Game.time - room.memory.last_attack_at) <= DEFEND_HOLD_TICKS;
+
+    const shouldDefend = threatActive || inHoldDown || controller.safeMode;
+
+    if (shouldDefend) {
         if (room.memory.defending) {
             return;
         }
-
-        const text = `Defending mode was enabled for for room ${room.name}\n` +
-                     `Is rampart damaged: ${rampartDamaged.length ? 'true' : 'false'}\n` +
-                     `Is spawn damaged: ${spawnDamaged.length ? 'true' : 'false'}\n` +
-                     `${enemyCreeps.length} enemy creeps`;
+        const text = `Defending mode was enabled for room ${room.name}\n` +
+                     `${enemyCreeps.length} enemy creeps, rampart hits delta: ${hitsDelta}`;
         console.log(text);
         Game.notify(text);
         room.memory.defending = true;
-    }else {
+    } else {
         room.memory.defending = false;
     }
 }

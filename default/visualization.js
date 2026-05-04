@@ -97,7 +97,10 @@ visualiseRoom = function(room) {
     const ls = room.memory.lab_status;
     if (ls && ls.output && ls.total > 0) {
         let text, color;
-        if (ls.dirty > 0) {
+        if (ls.forceEvac) {
+            text  = `🧪 ${ls.output}: stuck too long, evacuating labs`;
+            color = '#ff66ff';
+        } else if (ls.dirty > 0) {
             text  = `🧪 ${ls.output}: ${ls.dirty}/${ls.total} dirty (wrong mineral)`;
             color = 'orange';
         } else if (ls.stuck > 0) {

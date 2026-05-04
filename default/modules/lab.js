@@ -98,6 +98,11 @@ const rooms = {
 // 5. Создаем Т2 минерал.
 // 6. Перемещаем минералы в хранилище.
 
+// Через сколько тиков непрерывного stuck-состояния включаем force-evac (выгрузку лаб
+// несмотря на soft cap'ы). Запоздание защищает от мини-флаппинга когда storage чуть
+// освобождается и тут же снова забивается. Override per-room через memory.
+const DEFAULT_LAB_STUCK_EVAC_DELAY = 500;
+
 // Снимок состояния лаб для визуализации. Сохраняется в room.memory.lab_status,
 // читается из visualization.js. Обновляется на каждый вызов runReaction (раз в 10 тиков).
 function updateLabStatus(room, expectedOutput, source1, source2) {
@@ -126,13 +131,51 @@ function updateLabStatus(room, expectedOutput, source1, source2) {
     const sourceLow = source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT
                    || source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT;
 
+    // Отслеживаем длительность stuck-состояния для force-evac логики.
+    if (stuck > 0) {
+        if (!room.memory.lab_stuck_since) {
+            room.memory.lab_stuck_since = Game.time;
+        }
+    } else {
+        delete room.memory.lab_stuck_since;
+    }
+
+    const evacDelay = room.memory.lab_stuck_evac_delay || DEFAULT_LAB_STUCK_EVAC_DELAY;
+    const stuckDuration = room.memory.lab_stuck_since ? Game.time - room.memory.lab_stuck_since : 0;
+    const forceEvac = stuckDuration >= evacDelay;
+
     room.memory.lab_status = {
         output: expectedOutput,
         total: targetLabs.length,
         runnable, cooling, stuck, dirty,
         sourceLow,
+        forceEvac,
         at: Game.time,
     };
+}
+
+// Force-evacuation: дампим все target-labs в terminal/storage игнорируя soft cap'ы.
+// Запускается, когда stuck-статус продержался дольше evacDelay - чтобы освободить
+// лабы для других задач (boost, смена реакции). Throttle: 1 transfer-task за вызов.
+function forceEvacuateLabs(room, expectedOutput) {
+    const targetLabs = labs[room.name]["targets"].map(id => Game.getObjectById(id)).filter(l => l);
+    for (const lab of targetLabs) {
+        if (!lab.mineralType) continue;
+        if (lab.store.getUsedCapacity(lab.mineralType) == 0) continue;
+
+        // Дампим куда есть физическое место. Soft cap игнорируем - сама причина force-evac
+        // в том, что storage уже выше soft cap, но физического места обычно вагон.
+        const dump = (room.terminal && room.terminal.store.getFreeCapacity() > 0)
+            ? room.terminal
+            : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
+        if (!dump) {
+            console.log(`[${room.name}][LAB] Force-evac: нет физического места ни в terminal, ни в storage.`);
+            return;
+        }
+        console.log(`[${room.name}][LAB] Force-evac ${lab.mineralType} from lab ${lab.id} -> ${dump.structureType}`);
+        room.transfer(lab.mineralType, lab.id, dump.id);
+        return; // 1 transfer per call (charger-throttle).
+    }
 }
 
 exports.runReaction = function(room) {
@@ -151,6 +194,13 @@ exports.runReaction = function(room) {
 
     // Обновляем статус ДО ранних возвратов, чтобы случай "нет входных минералов" попадал в визуализацию.
     updateLabStatus(room, expectedOutput, source1, source2);
+
+    // Если stuck продержался дольше evacDelay - выгружаем лабы и не запускаем новые реакции
+    // (иначе лабы тут же наливаются обратно, ratchet-эффект).
+    if (room.memory.lab_status && room.memory.lab_status.forceEvac) {
+        forceEvacuateLabs(room, expectedOutput);
+        return;
+    }
 
     if (source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT) return;
     if (source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT) return;

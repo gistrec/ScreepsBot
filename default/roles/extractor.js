@@ -3,6 +3,8 @@ const taskRoom      = require('../tasks/room');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
 
+const lab = require('../modules/lab');
+
 
 const MAX_EXTRACTORS_IN_ROOM = 1;
 const MAX_MINERALS_IN_ROOM = 150000;
@@ -22,6 +24,10 @@ const roleExtractor = {
         const mineralcountInTerminal = (room.terminal ? room.terminal.store.getUsedCapacity(mineralType) : 0);
         const mineralCountInRoom = mineralCountInStorage + mineralcountInTerminal;
         if (mineralCountInRoom > MAX_MINERALS_IN_ROOM) return false; // No need to spawn
+
+        // Не спавним, если все потребители этого минерала (импортёры через `require`
+        // и локальные лабы по `resources`) уже забиты. Добытое некуда девать.
+        if (lab.isDownstreamSaturated(mineralType)) return false; // No need to spawn
 
         // Спавним как только появится свободный спавн
         const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => !spawn.spawning && spawn.name == room.name && spawn.isActive()}).shift();

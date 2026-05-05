@@ -103,6 +103,33 @@ const rooms = exports.rooms = {
 // освобождается и тут же снова забивается. Override per-room через memory.
 const DEFAULT_LAB_STUCK_EVAC_DELAY = 500;
 
+// Насыщение downstream: ресурс считается "ненужным", если у каждого потребителя
+// уже >= этого порога в storage+terminal. Для финальных продуктов (без потребителей)
+// функция возвращает false - такие копим до локального cap'а.
+const DOWNSTREAM_SATURATION_THRESHOLD = 30000;
+
+// Потребитель = комната, которая импортирует ресурс (`rooms[name].require`)
+// или использует его как вход локальной лабы (`labs[name].resources`).
+// Используется чтобы тормозить экстрактор и реакции когда дальше складывать некуда.
+exports.isDownstreamSaturated = function(mineral) {
+    let consumers = 0;
+    for (const consumerName in rooms) {
+        const isImporter = rooms[consumerName]["require"].includes(mineral);
+        const labResources = labs[consumerName] ? labs[consumerName]["resources"] : [];
+        const isLocalConsumer = labResources.includes(mineral);
+        if (!isImporter && !isLocalConsumer) continue;
+
+        const consumer = Game.rooms[consumerName];
+        if (!consumer || !consumer.terminal) continue;
+
+        consumers++;
+        const stock = consumer.terminal.store.getUsedCapacity(mineral)
+                    + (consumer.storage ? consumer.storage.store.getUsedCapacity(mineral) : 0);
+        if (stock < DOWNSTREAM_SATURATION_THRESHOLD) return false;
+    }
+    return consumers > 0;
+}
+
 // Снимок состояния лаб для визуализации. Сохраняется в room.memory.lab_status,
 // читается из visualization.js. Обновляется на каждый вызов runReaction (раз в 10 тиков).
 function updateLabStatus(room, expectedOutput, source1, source2) {
@@ -199,6 +226,12 @@ exports.runReaction = function(room) {
     // (иначе лабы тут же наливаются обратно, ratchet-эффект).
     if (room.memory.lab_status && room.memory.lab_status.forceEvac) {
         forceEvacuateLabs(room, expectedOutput);
+        return;
+    }
+
+    // Все потребители produce-минерала забиты - смысла гонять реакцию нет.
+    // Существующие лабы доедят cooldown, дальше runReaction сюда не зайдёт.
+    if (expectedOutput && exports.isDownstreamSaturated(expectedOutput)) {
         return;
     }
 

@@ -47,11 +47,30 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
         return
     }
 
-    const creep = this.find(FIND_MY_CREEPS, {filter: (c) => c.memory.role == "charger" && !c.memory.transfer}).shift();
-    if (!creep) {
+    const chargers = this.find(FIND_MY_CREEPS, {filter: (c) => c.memory.role == "charger" && !c.memory.transfer});
+    if (chargers.length === 0) {
         console.log(`[${this.name}] No creep to transfer`);
         return
     }
+
+    // Чарджер ближе всех к storage-link нужен для приоритетной выгрузки link -> storage:
+    // отдадим ему задачу только если других свободных нет, иначе link забивается, и
+    // source-link-и не могут пушить, source-майнеры стоят. link_id у всех чарджеров
+    // одинаковый (см. roles/charger.js при спавне), берём из первого.
+    let candidates = chargers;
+    if (chargers.length > 1) {
+        const link = chargers[0].memory.link_id ? Game.getObjectById(chargers[0].memory.link_id) : null;
+        if (link) {
+            const linkCharger = chargers.reduce((best, c) => {
+                const dist = c.pos.getRangeTo(link);
+                return (!best || dist < best.dist) ? {creep: c, dist} : best;
+            }, null);
+            const filtered = chargers.filter(c => c.id !== linkCharger.creep.id);
+            if (filtered.length > 0) candidates = filtered;
+        }
+    }
+
+    const creep = candidates[0];
     creep.memory.transfer = {resource_type, source_id, target_id, max_resource_count_in_target, min_resource_count_in_source};
     console.log(`[${this.name}] Creep ${creep.name} will transfer ${resource_type} resource`);
 }

@@ -93,7 +93,8 @@ const roleMiner = {
         // Если рядом стоит свежий майнер на том же source - этот старый уже не нужен.
         // Самоубиваемся, чтобы освободить место (контейнер, спот рядом с source).
         // TTL < 200: я уже доживаю; TTL замены > 800: это явно свежий крип, а не просто другой умирающий.
-        if (creep.ticksToLive < 200 && creep.memory.source_id) {
+        // Условие на пустой трюм: суицид с энергией = tombstone -> drop на полный контейнер -> чарджеры отвлекаются.
+        if (creep.ticksToLive < 200 && creep.memory.source_id && creep.store.getUsedCapacity() === 0) {
             const replacement = creep.pos.findInRange(FIND_MY_CREEPS, 2, {
                 filter: (c) => c.id != creep.id
                             && c.memory.role == 'miner'
@@ -103,6 +104,17 @@ const roleMiner = {
             if (replacement) {
                 console.log(`[${creep.room.name}] Miner ${creep.name} (TTL ${creep.ticksToLive}) hands off to ${replacement.name}`);
                 creep.suicide();
+                return;
+            }
+        }
+
+        // Pre-death drain: в последние ~100 тиков любой ценой пытаемся слить трюм в линк
+        // (даже если трюм не полон). Естественную TTL-смерть с непустым трюмом не вытащить
+        // целиком, но чем меньше энергии в гробнице - тем меньше дроп после её decay.
+        if (creep.ticksToLive < 100 && creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
+            const link = Game.structures[creep.memory.link_id];
+            if (link && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+                taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
                 return;
             }
         }
@@ -125,12 +137,12 @@ const roleMiner = {
 
         const link = Game.structures[creep.memory.link_id];
 
-        // Не майним, если энергии некуда деваться: трюм забит, линк забит/отсутствует
-        // и под крипом нет контейнера со свободным местом - иначе harvest пропадёт впустую.
-        const trunkFull = creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
-        const linkFull  = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
+        // Не майним, если outlet'ов нет: линк забит/отсутствует И под крипом нет контейнера
+        // со свободным местом. Намеренно не смотрим на трюм - даже частично наполненный
+        // трюм без outlet'а это тупик (умрём -> tombstone -> drop -> чарджеры отвлекаются).
+        const linkFull = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
         const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
-        if (trunkFull && linkFull && !containerUsable) {
+        if (linkFull && !containerUsable) {
             return;
         }
 

@@ -25,6 +25,7 @@ const roleCharger   = require('roles/charger');
 const roleClaimer   = require('roles/claimer');
 const roleUpgrader  = require('roles/upgrader');
 const roleHarvester = require('roles/harvester');
+const roleReserver  = require('roles/reserver');
 const roleWarrior   = require('roles/warrior');
 const roleDefender  = require('roles/defender');
 const roleExtractor = require('roles/extractor');
@@ -75,6 +76,8 @@ function spawnCreeps(room) {
     // if (!roleDefender.spawn(room)) return;
     if (!roleUpgrader.spawn(room)) return;
     if (!roleExtractor.spawn(room)) return;
+    if (!roleReserver.spawn(room)) return;
+    if (!roleHarvester.autoSpawn(room)) return;
 }
 
 function upgradeCreeps(room) {
@@ -211,6 +214,10 @@ loop = function () {
 
             case 'harvester':
                 roleHarvester.run(creep);
+                break;
+
+            case 'reserver':
+                roleReserver.run(creep);
                 break;
 
             case 'extractor':

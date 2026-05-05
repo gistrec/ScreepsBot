@@ -6,18 +6,50 @@ const taskResource = require('../tasks/resource');
 
 
 const MAX_PER_GAME = 6;
+const HARVESTERS_PER_TARGET = 2;
+
+const BODY = [
+    WORK, WORK, WORK, WORK, MOVE, MOVE, MOVE, MOVE, MOVE,
+    CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE
+];
+const BODY_COST = _.sum(BODY, p => BODYPART_COST[p]);  // 1250
+
+// Точки выхода/входа в зависимости от направления target от home. Game.map.describeExits
+// возвращает {1:top, 3:right, 5:bottom, 7:left}. home_entry - край home, ведущий в target;
+// target_entry - противоположный край target, ведущий обратно в home.
+const HOME_ENTRY_BY_DIR = {
+    1: {x: 25, y: 0},   // TOP
+    3: {x: 49, y: 25},  // RIGHT
+    5: {x: 25, y: 49},  // BOTTOM
+    7: {x: 0,  y: 25},  // LEFT
+};
+const TARGET_ENTRY_BY_DIR = {
+    1: {x: 25, y: 49},  // home was TOP -> target's BOTTOM faces home
+    3: {x: 0,  y: 25},  // home was RIGHT -> target's LEFT
+    5: {x: 25, y: 0},   // home was BOTTOM -> target's TOP
+    7: {x: 49, y: 25},  // home was LEFT -> target's RIGHT
+};
+
+function getEntryPositions(home_room, target_room) {
+    const exits = Game.map.describeExits(home_room);
+    if (!exits) return null;
+    let dir = null;
+    for (const d in exits) {
+        if (exits[d] === target_room) { dir = parseInt(d); break; }
+    }
+    if (dir == null) return null;
+    return {
+        homeEntry:   {...HOME_ENTRY_BY_DIR[dir],   roomName: home_room},
+        targetEntry: {...TARGET_ENTRY_BY_DIR[dir], roomName: target_room},
+    };
+}
 
 // Harvester - крип под remote mining: добывает в target_room, везёт в home_room.
 // Маршрут хранится в creep.memory: home_room, target_room и точки въезда home_entry/target_entry
 // (RoomPosition-сериализация вида {x,y,roomName}). Значения проставляются при спавне.
 //
-// Пример вызова из консоли / spawnCreeps:
-//   roleHarvester.spawn(spawn, {
-//       home_room:    "W8S35",
-//       target_room:  "W8S36",
-//       home_entry:   {x: 33, y: 48, roomName: "W8S35"},  // куда ехать когда полный
-//       target_entry: {x: 33, y: 1,  roomName: "W8S36"},  // куда ехать когда пустой
-//   });
+// Авто-спавн через Memory.remote_rooms[home_room] = [target_room1, ...].
+// Также можно спавнить вручную: roleHarvester.spawn(spawn, {home_room, target_room, home_entry, target_entry}).
 
 const roleHarvester = {
     spawn: function(spawn, opts) {
@@ -32,10 +64,6 @@ const roleHarvester = {
         }
         const name = 'Harvester' + Game.time;
         const role = 'harvester';
-        const parts = [
-            WORK, WORK, WORK, WORK, MOVE, MOVE, MOVE, MOVE, MOVE, // 650
-            CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE // 500
-        ];
         const memory = {
             role,
             home_room:    opts.home_room,
@@ -43,8 +71,52 @@ const roleHarvester = {
             home_entry:   opts.home_entry,
             target_entry: opts.target_entry,
         };
-        spawn.spawnCreep(parts, name, {memory});
+        spawn.spawnCreep(BODY, name, {memory});
         console.log(`Spawning new harvester: ${name} (${opts.home_room} <-> ${opts.target_room})`);
+        return true;
+    },
+
+    // Авто-спавн под Memory.remote_rooms[home_room]. Паттерн сцеплённого spawnCreeps:
+    // true = "ничего делать не нужно или другие могут пробовать", false = "только что заспавнили".
+    autoSpawn: function(room) {
+        const targets = (Memory.remote_rooms && Memory.remote_rooms[room.name]) || [];
+        if (targets.length === 0) return true;
+
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: (s) => s.name == room.name && !s.spawning && s.isActive()}).shift();
+        if (!spawn) return true;
+
+        for (const target_room of targets) {
+            const harvesters = _.filter(Game.creeps, c =>
+                c.memory.role == 'harvester' && c.memory.target_room == target_room
+            );
+            if (harvesters.length >= HARVESTERS_PER_TARGET) continue;
+
+            if (room.energyAvailable < BODY_COST) {
+                console.log(`[${room.name}] Need harvester for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
+                return false;
+            }
+
+            const positions = getEntryPositions(room.name, target_room);
+            if (!positions) {
+                console.log(`[${room.name}] No direct exit to ${target_room}, skipping harvester`);
+                continue;
+            }
+
+            const name = `Harvester_${target_room}_${Game.time}`;
+            const result = spawn.spawnCreep(BODY, name, {
+                memory: {
+                    role: 'harvester',
+                    home_room: room.name,
+                    target_room: target_room,
+                    home_entry: positions.homeEntry,
+                    target_entry: positions.targetEntry,
+                }
+            });
+            if (result === OK) {
+                console.log(`[${room.name}] Spawning harvester ${name} for ${target_room}`);
+                return false;
+            }
+        }
         return true;
     },
 

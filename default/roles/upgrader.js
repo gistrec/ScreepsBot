@@ -19,7 +19,7 @@ const roleUpgrader = {
     rebalanceRepairing: function(room) {
         const MAX_CREEPS_PER_WALL = room.hasHostiles ? 3 : 1;
 
-        const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role === 'upgrader'});
+        const creeps = utils.creepsByRole(room, 'upgrader');
         const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART })
                           .sort((lhv, rhv) => { return rhv.hits - lhv.hits; });
         for (const chunk of _.chunk(creeps, MAX_CREEPS_PER_WALL)) {
@@ -35,9 +35,7 @@ const roleUpgrader = {
 
     },
     spawn: function(room) {
-        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
-        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) {
             return true;
         }
@@ -47,7 +45,7 @@ const roleUpgrader = {
 
         // Не учитываем уходящих - чтобы спавнить замену заранее, а не после смерти.
         // В бутстрапе count=0 в любом случае, фильтр не блокирует первый спавн.
-        const upgraders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "upgrader" && creep.ticksToLive > replacementTtl});
+        const upgraders = utils.creepsByRole(room, "upgrader").filter(c => c.ticksToLive > replacementTtl);
 
         let max_count = creepConfiguration["max_count"];
         let parts = creepConfiguration["parts"];

@@ -4,10 +4,10 @@ function isInWhitelist(entity, whitelist) {
 
 function getEnergyCapacityAvailable(room, spawn = null) {
     // TODO: Добавить проверку, что крипы целые?
-    const miner = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "miner"});
-    const charger = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "charger"});
+    const miners = exports.creepsByRole(room, "miner");
+    const chargers = exports.creepsByRole(room, "charger");
 
-    if (charger.length >= 1 && miner.length >= 1) {
+    if (chargers.length >= 1 && miners.length >= 1) {
         return room.energyCapacityAvailable;
     } else {
         return room.energyAvailable;
@@ -76,6 +76,38 @@ exports.getMyStructuresByType = function(room) {
     }
     return room._myStructuresByType;
 };
+
+// Свободный спавн в комнате, готовый принять задачу spawnCreep.
+// Опции:
+//   primaryOnly  - брать только спавн с именем == room.name (legacy hack из CLAUDE.md
+//                  для сериализации спавн-цепочки между ролями).
+//   requireActive - проверять spawn.isActive() (на случай downgrade RCL).
+exports.findFreeSpawn = function(room, {primaryOnly = true, requireActive = true} = {}) {
+    return room.find(FIND_MY_SPAWNS, {
+        filter: s => !s.spawning
+                  && (!requireActive || s.isActive())
+                  && (!primaryOnly || s.name == room.name),
+    }).shift();
+}
+
+// Свои крипы в комнате с заданной ролью. Тонкая обёртка над find - per-tick кеш не делаем,
+// т.к. в одном тике может быть spawnCreep между вызовами и кеш окажется устаревшим.
+exports.creepsByRole = function(room, role) {
+    return room.find(FIND_MY_CREEPS, {filter: c => c.memory.role === role});
+}
+
+// Аналог для глобального Game.creeps (используется для remote-ролей: harvester/reserver).
+exports.allCreepsByRole = function(role) {
+    return _.filter(Game.creeps, c => c.memory.role === role);
+}
+
+// Стоимость тела по массиву типов частей. Для массива из spawnCreep, до создания крипа.
+// Для живого крипа есть Creep.prototype.bodyPartCost (он внутри использует этот хелпер).
+exports.bodyCost = function(parts) {
+    let cost = 0;
+    for (const p of parts) cost += BODYPART_COST[p];
+    return cost;
+}
 
 exports.getEnergyStructures = function(room, spawn) {
     const sortByRange = ((first, second) => {

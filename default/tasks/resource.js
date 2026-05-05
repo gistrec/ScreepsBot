@@ -429,7 +429,11 @@ exports.disassembleResource = function(creep) {
         return OK;
     }
 
-    const factory = creep.room.find(FIND_MY_STRUCTURES, {filter: s => s.structureType == STRUCTURE_FACTORY})[0];
+    const factory = creep.room.getFactory();
+    if (!factory) {
+        delete creep.memory.disassemble;
+        return OK;
+    }
     if (factory.store.getFreeCapacity() <= 5000) {
         if (creep.store.getUsedCapacity() != 0) {
             creep.say(`Remove battery`);

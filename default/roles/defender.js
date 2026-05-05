@@ -21,7 +21,7 @@ const roleDefender = {
     rebalanceRepairing: function(room) {
         const MAX_CREEPS_PER_WALL = 1;
 
-        const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role === 'defender'});
+        const creeps = utils.creepsByRole(room, 'defender');
         const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_WALL || s.structureType == STRUCTURE_RAMPART });
 
         // Координация с rampartDefender'ами и реакция на nuke'и: rampart'ы под угрозой ремонтируются в первую очередь.
@@ -53,7 +53,7 @@ const roleDefender = {
 
     },
     spawn: function(room) {
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => !spawn.spawning && spawn.name == room.name}).shift();
+        const spawn = utils.findFreeSpawn(room, {requireActive: false});
         if (!spawn) {
             return true;
         }
@@ -63,7 +63,7 @@ const roleDefender = {
             return true;
         }
 
-        const defenders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == 'defender' });
+        const defenders = utils.creepsByRole(room, 'defender');
         const max_count = room.isDefending
             ? MAX_PER_DEFENDING_ROOM
             : MAX_PER_ROOM

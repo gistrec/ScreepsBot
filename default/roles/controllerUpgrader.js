@@ -13,14 +13,12 @@ const MAX_CREEPS_PER_ROOM = 1;
 
 const roleUpgrader = {
     spawn: function(room) {
-        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
-        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) {
             return true;
         }
 
-        const upgraders = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "controller_upgrader"});
+        const upgraders = utils.creepsByRole(room, "controller_upgrader");
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
 
 

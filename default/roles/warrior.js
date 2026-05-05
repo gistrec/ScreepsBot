@@ -10,7 +10,7 @@ const WHITELIST = ["ganyu"];
 
 const roleWarrior = {
     update: function() {
-        const warriors = _.filter(Game.creeps, (creep) => creep.memory.role == 'warrior');
+        const warriors = utils.allCreepsByRole('warrior');
         if(warriors.length <= MAX_PER_ROOM) {
             const name = 'Warrior' + Game.time;
             console.log('Spawning new warrior: ' + name);

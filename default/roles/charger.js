@@ -23,14 +23,12 @@ function findStructureNearSpawn(spawn, structureType) {
 
 const roleCharger = {
     spawn: function(room, force = false) {
-        // Note: Спавнящийся крип не попадает в FIND_MY_SPAWNS, поэтому чтобы не плодились лишние крипы
-        // добавляем проверку `spawn.name == room.name` - от неё нужно избавиться
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning && spawn.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) {
             return true;
         }
 
-        const charger = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "charger"});
+        const charger = utils.creepsByRole(room, "charger");
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (charger.length >= creepConfiguration['max_count']) {
             if (!force) return true;

@@ -41,12 +41,13 @@ const roleRampartDefender = {
             if (!force) return true;
         }
 
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => spawn.name == room.name && !spawn.spawning}).shift();
+        const spawn = utils.findFreeSpawn(room, {requireActive: false});
         if (!spawn) {
             return true;
         }
 
-        const creeps = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "rampart_defender" && (creep.ticksToLive > 150 && !creep.spawning) });
+        const creeps = utils.creepsByRole(room, "rampart_defender")
+            .filter(c => c.ticksToLive > 150 && !c.spawning);
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creeps.length >= creepConfiguration['max_count']) {
             if (!force) return true;

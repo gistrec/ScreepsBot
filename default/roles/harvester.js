@@ -1,4 +1,5 @@
 const sources      = require('sources');
+const utils        = require('utils');
 
 const taskCreep     = require('../tasks/creep');
 const taskStructure = require('../tasks/structure');
@@ -12,7 +13,7 @@ const BODY = [
     WORK, WORK, WORK, WORK, MOVE, MOVE, MOVE, MOVE, MOVE,
     CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE
 ];
-const BODY_COST = _.sum(BODY, p => BODYPART_COST[p]);  // 1250
+const BODY_COST = utils.bodyCost(BODY);  // 1250
 
 // Точки выхода/входа в зависимости от направления target от home. Game.map.describeExits
 // возвращает {1:top, 3:right, 5:bottom, 7:left}. home_entry - край home, ведущий в target;
@@ -58,7 +59,7 @@ const roleHarvester = {
             return false;
         }
 
-        const harvesters = _.filter(Game.creeps, (creep) => creep.memory.role == 'harvester');
+        const harvesters = utils.allCreepsByRole('harvester');
         if (harvesters.length >= MAX_PER_GAME) {
             return false;
         }
@@ -82,13 +83,12 @@ const roleHarvester = {
         const targets = (Memory.remote_rooms && Memory.remote_rooms[room.name]) || [];
         if (targets.length === 0) return true;
 
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (s) => s.name == room.name && !s.spawning && s.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) return true;
 
+        const allHarvesters = utils.allCreepsByRole('harvester');
         for (const target_room of targets) {
-            const harvesters = _.filter(Game.creeps, c =>
-                c.memory.role == 'harvester' && c.memory.target_room == target_room
-            );
+            const harvesters = allHarvesters.filter(c => c.memory.target_room == target_room);
             if (harvesters.length >= HARVESTERS_PER_TARGET) continue;
 
             if (room.energyAvailable < BODY_COST) {

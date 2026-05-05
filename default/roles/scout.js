@@ -12,7 +12,7 @@ const roleClaimer = {
             return true;
         }
 
-        const scouts = Object.keys(Game.creeps).filter((creepName) => Game.creeps[creepName].memory.role === 'scout');
+        const scouts = utils.allCreepsByRole('scout');
         if (scouts.length !== 0) {
             return true;
         }
@@ -23,7 +23,7 @@ const roleClaimer = {
         const room = utils.findNearestOwnRoom(expand.pos.roomName, configurations[0].energy);
         if (!room) return true;
 
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: s => !s.spawning}).shift();
+        const spawn = utils.findFreeSpawn(room, {primaryOnly: false, requireActive: false});
         if (!spawn) {
             return false;
         }

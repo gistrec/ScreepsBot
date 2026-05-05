@@ -22,7 +22,7 @@ const roleRemoteUpgrader = {
             return true;
         }
 
-        const remoteUpgraders = Object.keys(Game.creeps).filter((creepName) => Game.creeps[creepName].memory.role === 'remote_upgrader');
+        const remoteUpgraders = utils.allCreepsByRole('remote_upgrader');
         if (remoteUpgraders.length >= MAX_UPGRADERS) {
             return true;
         }
@@ -39,7 +39,7 @@ const roleRemoteUpgrader = {
             return false;
         }
 
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: s => !s.spawning && s.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room, {primaryOnly: false});
         if (!spawn) return false;
 
         const name = 'RemoteUpgrader' + Game.time;

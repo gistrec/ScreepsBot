@@ -20,7 +20,7 @@ const roleClaimer = {
             return true;
         }
 
-        const claimers = Object.keys(Game.creeps).filter((creepName) => Game.creeps[creepName].memory.role === 'claimer');
+        const claimers = utils.allCreepsByRole('claimer');
         if (claimers.length !== 0) {
             return true;
         }
@@ -34,7 +34,7 @@ const roleClaimer = {
             return true;
         }
 
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: s => !s.spawning && s.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room, {primaryOnly: false});
         if (!spawn) {
             return false;
         }

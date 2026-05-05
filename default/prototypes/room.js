@@ -27,14 +27,14 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
     if (source_id == "terminal") source_id = this.terminal.id;
     if (source_id == "storage")  source_id = this.storage.id;
     if (source_id == "factory") {
-        const factory = this.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_FACTORY}).shift();
+        const factory = this.getFactory();
         if (factory) source_id = factory.id;
     }
 
     if (target_id == "terminal") target_id = this.terminal.id;
     if (target_id == "storage")  target_id = this.storage.id;
     if (target_id == "factory") {
-        const factory = this.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_FACTORY}).shift();
+        const factory = this.getFactory();
         if (factory) target_id = factory.id;
     }
 
@@ -47,7 +47,7 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
         return
     }
 
-    const chargers = this.find(FIND_MY_CREEPS, {filter: (c) => c.memory.role == "charger" && !c.memory.transfer});
+    const chargers = require('utils').creepsByRole(this, "charger").filter(c => !c.memory.transfer);
     if (chargers.length === 0) {
         console.log(`[${this.name}] No creep to transfer`);
         return

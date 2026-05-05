@@ -1,3 +1,5 @@
+const utils = require('../utils');
+
 // Key - roomName
 let renewingCreeps = {}
 let costMatrixRewrites = {}
@@ -76,8 +78,8 @@ exports.renewCreeps = function(room) {
         return;
     }
 
-    const miners = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "miner"});
-    const charger = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == "charger"});
+    const miners = utils.creepsByRole(room, "miner");
+    const charger = utils.creepsByRole(room, "charger");
     if (miners.length < 2 && charger.length < 2) {
         return;
     }

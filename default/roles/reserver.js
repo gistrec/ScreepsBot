@@ -1,4 +1,5 @@
 const profiler = require('../screeps-profiler');
+const utils = require('../utils');
 
 
 // Reserver - удалённый резервер контроллеров. Едет в target_room, кастует
@@ -22,13 +23,12 @@ const roleReserver = {
         const targets = (Memory.remote_rooms && Memory.remote_rooms[room.name]) || [];
         if (targets.length === 0) return true;
 
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (s) => s.name == room.name && !s.spawning && s.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) return true;
 
+        const reservers = utils.allCreepsByRole('reserver');
         for (const target_room of targets) {
-            const existing = _.find(Game.creeps, c =>
-                c.memory.role == 'reserver' && c.memory.target_room == target_room
-            );
+            const existing = reservers.find(c => c.memory.target_room == target_room);
             if (existing) continue;
 
             if (room.energyAvailable < BODY_COST) {

@@ -1,4 +1,5 @@
 const profiler = require('../screeps-profiler');
+const utils = require('../utils');
 
 // Squad-coordinator. State machine `Memory.power_banks[bankId].status`:
 //   'pending'   -> bank just discovered by observer; squad not yet sent
@@ -22,9 +23,8 @@ const CARRIER_BODY = [].concat(
     Array(25).fill(CARRY), Array(25).fill(MOVE),
 );
 
-function bodyCost(body) {
-    return _.sum(body, p => BODYPART_COST[p]);
-}
+// Локальный alias для краткости в матчах ниже.
+const bodyCost = utils.bodyCost;
 
 exports.process = function() {
     if (!Memory.power_banks) return;
@@ -105,7 +105,7 @@ function tryAllocateSquad(bank) {
         r.controller && r.controller.my
         && r.controller.level >= 8
         && r.energyCapacityAvailable >= bodyCost(HEALER_BODY)
-        && r.find(FIND_MY_SPAWNS, {filter: s => !s.spawning}).length >= 1
+        && !!utils.findFreeSpawn(r, {primaryOnly: false, requireActive: false})
     );
     if (candidates.length === 0) return;
 
@@ -118,7 +118,7 @@ function tryAllocateSquad(bank) {
 
     if (home.energyAvailable < bodyCost(ATTACKER_BODY)) return;
 
-    const spawn = home.find(FIND_MY_SPAWNS, {filter: s => !s.spawning})[0];
+    const spawn = utils.findFreeSpawn(home, {primaryOnly: false, requireActive: false});
     const tag = bank.id.slice(-4);
     const attackerName = `Atk_${tag}_${Game.time}`;
     const healerName   = `Hlr_${tag}_${Game.time}`;
@@ -148,7 +148,7 @@ function trySpawnHealer(bank) {
     if (!home) return;
     if (home.energyAvailable < bodyCost(HEALER_BODY)) return;
 
-    const spawn = home.find(FIND_MY_SPAWNS, {filter: s => !s.spawning})[0];
+    const spawn = utils.findFreeSpawn(home, {primaryOnly: false, requireActive: false});
     if (!spawn) return;
 
     const [attackerName, healerName] = bank.squad;
@@ -174,7 +174,7 @@ function spawnCarriers(bank) {
     bank.carriers = [];
     const tag = bank.id.slice(-4);
     for (let i = 0; i < count; i++) {
-        const spawn = home.find(FIND_MY_SPAWNS, {filter: s => !s.spawning})[0];
+        const spawn = utils.findFreeSpawn(home, {primaryOnly: false, requireActive: false});
         if (!spawn) break;
         if (home.energyAvailable < bodyCost(CARRIER_BODY)) break;
 

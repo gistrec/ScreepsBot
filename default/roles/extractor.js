@@ -1,3 +1,5 @@
+const utils = require('../utils');
+
 const taskCreep     = require('../tasks/creep');
 const taskRoom      = require('../tasks/room');
 const taskResource  = require('../tasks/resource');
@@ -30,11 +32,11 @@ const roleExtractor = {
         if (lab.isDownstreamSaturated(mineralType)) return false; // No need to spawn
 
         // Спавним как только появится свободный спавн
-        const spawn = room.find(FIND_MY_SPAWNS, {filter: (spawn) => !spawn.spawning && spawn.name == room.name && spawn.isActive()}).shift();
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) return true; // Need to spawn
 
         // Не спавним, если в комнате уже есть extractor
-        const extractors = room.find(FIND_MY_CREEPS, {filter: (creep) => creep.memory.role == 'extractor' });
+        const extractors = utils.creepsByRole(room, 'extractor');
         if (extractors.length >= MAX_EXTRACTORS_IN_ROOM) return false; // No need to spawn
 
         // Не спавним, если в комнате нет экстрактора

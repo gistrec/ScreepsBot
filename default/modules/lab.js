@@ -396,7 +396,7 @@ exports.transferResourcesBetweenRooms = function() {
 
                 const transfer = {resource_type: requireMineral, source_id: sourceRoom.storage.id, target_id: sourceRoom.terminal.id, max_resource_count_in_target: 10000};
 
-                const charger = sourceRoom.find(FIND_MY_CREEPS, {filter: (c) => c.memory.role == "charger" && !c.memory.transfer}).shift();
+                const charger = require('../utils').creepsByRole(sourceRoom, "charger").filter(c => !c.memory.transfer).shift();
                 if (charger) charger.memory.transfer = transfer;
             }
         }

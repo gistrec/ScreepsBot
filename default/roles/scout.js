@@ -17,22 +17,20 @@ const roleClaimer = {
             return true;
         }
 
-        // TODO: Find nearest room.
-        const room = Object.keys(Game.rooms).map(roomName => Game.rooms[roomName])
-                               .filter(room => room.controller && room.controller.my)
-                               .sort((lhv, rhv) => lhv.energyAvailable - rhv.energyAvailable)
-                               .pop(); // Last
-        const spawn = room.find(FIND_MY_SPAWNS)
-                          .filter(spawn => !spawn.spawning)
-                          .sort((lhv, rhv) => lhv.energy - rhv.energy)
-                          .pop(); // Last
+        const expand = Game.flags['Expand'];
+        if (!expand) return true;
+
+        const room = utils.findNearestOwnRoom(expand.pos.roomName, configurations[0].energy);
+        if (!room) return true;
+
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: s => !s.spawning}).shift();
         if (!spawn) {
             return false;
         }
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
-        if (creepConfiguration["energy"] > room.energyCapacityAvailable) {
-            console.log(`Room ${room.name} need Scout, but not enought energy [${room.energyCapacityAvailable}/${creepConfiguration["energy"]}]`)
+        if (creepConfiguration["energy"] > room.energyAvailable) {
+            console.log(`[${room.name}] Need Scout, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
 

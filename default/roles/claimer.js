@@ -25,22 +25,23 @@ const roleClaimer = {
             return true;
         }
 
-        // TODO: Find nearest room.
-        const room = Object.keys(Game.rooms).map(roomName => Game.rooms[roomName])
-                               .filter(room => room.controller && room.controller.my)
-                               .sort((lhv, rhv) => lhv.energyAvailable - rhv.energyAvailable)
-                               .pop(); // Last
-        const spawn = room.find(FIND_MY_SPAWNS)
-                          .filter(spawn => !spawn.spawning && spawn.isActive())
-                          .sort((lhv, rhv) => lhv.energy - rhv.energy)
-                          .pop(); // Last
+        const expand = Game.flags['Expand'];
+        if (!expand) return true;
+
+        const room = utils.findNearestOwnRoom(expand.pos.roomName, configurations[0].energy);
+        if (!room) {
+            console.log(`[EXPANSION] No own room with energyCapacity >= ${configurations[0].energy} for claimer`);
+            return true;
+        }
+
+        const spawn = room.find(FIND_MY_SPAWNS, {filter: s => !s.spawning && s.isActive()}).shift();
         if (!spawn) {
             return false;
         }
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
-        if (creepConfiguration["energy"] > room.energyCapacityAvailable) {
-            console.log(`Room ${room.name} need Claimer, but not enought energy [${room.energyCapacityAvailable}/${creepConfiguration["energy"]}]`)
+        if (creepConfiguration["energy"] > room.energyAvailable) {
+            console.log(`[${room.name}] Need Claimer, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
 
@@ -48,7 +49,7 @@ const roleClaimer = {
         const role = 'claimer';
         const spawn_room = room.name;
         spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, spawn_room }});
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        console.log(`[${room.name}] Spawning new ${role} ${name} for ${expand.pos.roomName}`);
 
         return false;
     },
@@ -101,7 +102,7 @@ const roleClaimer = {
             Memory.expansion.status = STATUS_BUILDING;
             console.log(`[${creep.room.name}] Claiming complete. Start building`);
 
-            room.createConstructionSite(expand.pos.x + 2, expand.pos.y, STRUCTURE_SPAWN, creep.room.name);
+            creep.room.createConstructionSite(expand.pos.x + 2, expand.pos.y, STRUCTURE_SPAWN, creep.room.name);
 
             creep.suicide();
         }

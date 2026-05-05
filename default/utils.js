@@ -33,6 +33,25 @@ exports.getAvailableCreepCount = function(configurations, room) {
     return configuration["max_count"];
 }
 
+// Свою комнату с energyCapacityAvailable >= requiredCapacity, ближайшую к target
+// по linear distance. Возвращает null если таких нет. Используется expansion-ролями
+// (claimer/scout/remoteUpgrader) для выбора спавн-комнаты.
+exports.findNearestOwnRoom = function(targetRoomName, requiredCapacity) {
+    const candidates = [];
+    for (const name in Game.rooms) {
+        const r = Game.rooms[name];
+        if (!r.controller || !r.controller.my) continue;
+        if (r.energyCapacityAvailable < requiredCapacity) continue;
+        candidates.push(r);
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) =>
+        Game.map.getRoomLinearDistance(a.name, targetRoomName)
+      - Game.map.getRoomLinearDistance(b.name, targetRoomName)
+    );
+    return candidates[0];
+}
+
 // TTL, при котором майнера пора заменять: реальное время спавна нового тела + запас на дорогу.
 // Используется и в miner.spawn (когда пора спавнить замену), и в sources.get (новый игнорирует
 // уходящего при выборе source - чтобы пойти именно на его место).

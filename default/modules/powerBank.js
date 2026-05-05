@@ -9,8 +9,11 @@ const profiler = require('../screeps-profiler');
 // Тактика: 1 attacker + 1 healer на банк, после смерти - N carrier'ов.
 // Concurrency: max 1 active (attacking|looting) операция, регулируется memory.
 
+// Порядок частей: урон идёт с начала массива, поэтому MOVE-щит впереди
+// (просадит скорость, но не DPS), ATTACK в середине, HEAL в конце - self-heal
+// доживает до последнего.
 const ATTACKER_BODY = [].concat(
-    Array(20).fill(ATTACK), Array(20).fill(MOVE), Array(10).fill(HEAL),
+    Array(20).fill(MOVE), Array(20).fill(ATTACK), Array(10).fill(HEAL),
 );
 const HEALER_BODY = [].concat(
     Array(25).fill(HEAL), Array(25).fill(MOVE),

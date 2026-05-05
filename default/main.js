@@ -50,6 +50,7 @@ const moduleLab   = require('modules/lab');
 const moduleBuild = require('modules/build');
 const moduleObserver  = require('modules/observer');
 const moduleExpansion = require('modules/expansion');
+const moduleRoomSurvey = require('modules/roomSurvey');
 const moduleResourceBalance = require('modules/resourceBalance')
 const modulePower     = require('modules/power');
 const modulePowerBank = require('modules/powerBank');
@@ -131,6 +132,7 @@ loop = function () {
     try { moduleBuild.process();           } catch (err) { err.log() }
     try { moduleObserver.process();        } catch (err) { err.log() }
     try { moduleExpansion.process();       } catch (err) { err.log() }
+    try { moduleRoomSurvey.process();      } catch (err) { err.log() }
     try { moduleResourceBalance.process(); } catch (err) { err.log() }
     try { modulePower.process();           } catch (err) { err.log() }
     try { modulePowerBank.process();       } catch (err) { err.log() }

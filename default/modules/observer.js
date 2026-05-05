@@ -25,7 +25,7 @@ const rooms = [                         "W10S33",
 let current_room_index = 0;
 
 
-const get_observers = function() {
+const get_observers = exports.get_observers = function() {
     const rooms = _.filter(Game.rooms, (room) => room.controller && room.controller.my);
     return _.map(rooms, (room) => {
         if (room.memory.observer_id) {

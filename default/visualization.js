@@ -235,6 +235,46 @@ function visualiseLabFlows() {
     }
 }
 
+// Маркер пригодности комнаты под claim. Берёт данные из Memory.roomSurvey
+// (заполняется modules/roomSurvey). Свои комнаты пропускаем - у них свой стек
+// индикаторов; highway не интересует. Иконка в правом-верхнем углу клетки карты,
+// под ней - тип минерала (или "SK" для центральных 3x3 сектора).
+function visualiseRoomSurveyMap() {
+    if (!Memory.roomSurvey) return;
+
+    for (const name in Memory.roomSurvey) {
+        const s = Memory.roomSurvey[name];
+        if (s.owned) continue;
+        if (s.isHighway) continue;
+
+        let color, icon;
+        if (s.claimable === 'yes')          { color = '#44ff88'; icon = '✓'; }
+        else if (s.claimable === 'unknown') { color = '#ffcc44'; icon = '?'; }
+        else                                { color = '#ff6666'; icon = '✗'; }
+        Game.map.visual.text(`${icon} r${s.clearRadius}`, new RoomPosition(49, 4, name), {color, align: 'right', fontSize: 5});
+
+        const sub = s.isSK ? 'SK' : (s.mineral || '');
+        if (sub) {
+            Game.map.visual.text(sub, new RoomPosition(49, 10, name), {color: s.isSK ? '#888888' : '#aaccff', align: 'right', fontSize: 5});
+        }
+    }
+}
+
+// Превью базы 13x13 в самой комнате (видно при зуме). Рисуем только для не-наших
+// surveyed-комнат - чтобы не загромождать собственные базы и highway.
+function visualiseRoomSurveyOverlay(room) {
+    const s = Memory.roomSurvey && Memory.roomSurvey[room.name];
+    if (!s || s.owned || s.isHighway) return;
+
+    const [cx, cy] = s.center;
+    let color;
+    if (s.claimable === 'yes')          color = '#44ff88';
+    else if (s.claimable === 'unknown') color = '#ffcc44';
+    else                                color = '#ff6666';
+    room.visual.rect(cx - 6, cy - 6, 13, 13, {fill: 'transparent', stroke: color, lineStyle: 'dashed', opacity: 0.6})
+               .text(`r${s.clearRadius}`, cx, cy + 0.3, {color, font: 0.6});
+}
+
 // Стрелки power-bank операций: home_room → комната банка. Цвет по статусу:
 //   attacking - красный (squad едет/бьёт)
 //   looting   - оранжевый (carriers везут power)
@@ -262,7 +302,9 @@ exports.process = function() {
 
         visualiseRoom(room);
         visualiseMap(room);
+        visualiseRoomSurveyOverlay(room);
     }
     visualiseLabFlows();
     visualisePowerBankFlows();
+    visualiseRoomSurveyMap();
 }

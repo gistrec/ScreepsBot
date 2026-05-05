@@ -73,7 +73,7 @@ const roleHarvester = {
             target_entry: opts.target_entry,
         };
         spawn.spawnCreep(BODY, name, {memory});
-        console.log(`Spawning new harvester: ${name} (${opts.home_room} <-> ${opts.target_room})`);
+        console.log(`[${opts.home_room}][harvester] Spawning new ${name} (${opts.home_room} <-> ${opts.target_room})`);
         return true;
     },
 

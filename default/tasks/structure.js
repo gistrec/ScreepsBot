@@ -35,7 +35,7 @@ exports.buildTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[buildTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][buildTarget] ${creep.name} error ${status}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -89,7 +89,7 @@ exports.repairTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[repairTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][repairTarget] ${creep.name} error ${status}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -154,7 +154,7 @@ exports.dismantleTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[dismantleTarget] Error ${status}`)
+            console.log(`[${creep.room.name}][dismantleTarget] ${creep.name} error ${status}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -194,7 +194,7 @@ exports.upgradeController = function(creep, controller = creep.room.controller) 
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[upgradeController] Error ${status}`)
+            console.log(`[${creep.room.name}][upgradeController] ${creep.name} error ${status}`)
             return ERR_NOT_FOUND;
     }
 }

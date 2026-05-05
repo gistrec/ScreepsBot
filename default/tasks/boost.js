@@ -206,7 +206,7 @@ exports.checkBoost = function(creep) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[checkBoost] Error ${status}. Boost tesk was deleted`)
+            console.log(`[${creep.room.name}][Boost] ${creep.name} error ${status}. Boost task was deleted`)
             delete creep.memory.boost
             return ERR_NOT_FOUND;
     }
@@ -236,7 +236,7 @@ exports.checkUnboost = function(creep) {
     })();
 
     if (!lab) {
-        console.log(`Not found lab for unboost creep ${creep.name}. Unboost task was deleted.`);
+        console.log(`[${creep.room.name}][Unboost] Not found lab for ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
         return ERR_NOT_FOUND;
     }
@@ -255,7 +255,7 @@ exports.checkUnboost = function(creep) {
     })();
 
     if (!container) {
-        console.log(`Not found container for unboost creep ${creep.name}. Unboost task was deleted.`);
+        console.log(`[${creep.room.name}][Unboost] Not found container for ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
         return ERR_NOT_FOUND;
     }

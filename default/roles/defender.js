@@ -49,7 +49,7 @@ const roleDefender = {
                 creep.memory.repairing = wall.id;
             }
         }
-        console.log("Rebalancing defenders");
+        console.log(`[${room.name}][Defender] Rebalancing defenders`);
 
     },
     spawn: function(room) {
@@ -74,7 +74,7 @@ const roleDefender = {
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`Room ${room.name} need Defender, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            console.log(`[${room.name}] Need Defender, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
 
@@ -88,7 +88,7 @@ const roleDefender = {
             ...room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_EXTENSION}),
             spawn
         ]});
-        console.log(`Spawning new ${role} ${name} in ${room.name}`);
+        console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },

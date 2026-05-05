@@ -37,7 +37,7 @@ const roleClaimer = {
         const name = 'Scout' + Game.time;
         const role = 'scout';
         spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role }});
-        console.log(`Spawning new ${role} ${name} in ${room.name}`);
+        console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },
@@ -54,8 +54,8 @@ const roleClaimer = {
         if (!Memory.expansion.roomName || Memory.expansion.status == "scout") {
             Memory.expansion.roomName = creep.room.name;
             Memory.expansion.status = 'claimer';
-            console.log(`Scout find expand room ${creep.room.name}`);
-            console.log(`Claiming status change scout->claimer`);
+            console.log(`[${creep.room.name}][EXPANSION] Scout found expand room`);
+            console.log(`[${creep.room.name}][EXPANSION] Claiming status change scout->claimer`);
         }
 
         // Idle...

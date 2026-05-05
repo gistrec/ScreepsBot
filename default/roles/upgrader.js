@@ -31,7 +31,7 @@ const roleUpgrader = {
                 creep.memory.repairing = wall.id;
             }
         }
-        console.log("Rebalancing upgrader");
+        console.log(`[${room.name}][Upgrader] Rebalancing upgraders`);
 
     },
     spawn: function(room) {
@@ -55,7 +55,7 @@ const roleUpgrader = {
         }
 
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Room need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            console.log(`[${room.name}] Need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
 

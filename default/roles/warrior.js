@@ -13,7 +13,7 @@ const roleWarrior = {
         const warriors = utils.allCreepsByRole('warrior');
         if(warriors.length <= MAX_PER_ROOM) {
             const name = 'Warrior' + Game.time;
-            console.log('Spawning new warrior: ' + name);
+            console.log(`[warrior] Spawning new warrior: ${name}`);
             Game.spawns[''].spawnCreep([TOUGH, TOUGH, TOUGH, TOUGH, TOUGH, TOUGH, TOUGH, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, ATTACK, ATTACK], name, {
                 memory: {
                     role: 'warrior',

@@ -133,7 +133,7 @@ exports.claimClosest = function(creep) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[5] Error ${status}`)
+            console.log(`[${creep.room.name}][upgradeController] ${creep.name} error ${status}`)
             return ERR_NOT_FOUND
     }
 }

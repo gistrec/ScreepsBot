@@ -35,7 +35,7 @@ const roleCharger = {
         }
 
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`Room ${room.name} need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            console.log(`[${room.name}] Need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             return false;
         }
 

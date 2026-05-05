@@ -58,7 +58,7 @@ const roleRampartDefender = {
         const role = 'rampart_defender'
         const energyStructures = utils.getEnergyStructures(room, spawn);
         spawn.spawnCreep(creepConfiguration["parts"], name, { memory: { role, boost_queue }, energyStructures});
-        console.log(`Spawning new ${role} ${name} in ${room.name}`);
+        console.log(`[${room.name}] Spawning new ${role} ${name}`);
         return false;
     },
     run: function(creep) {

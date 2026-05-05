@@ -41,7 +41,7 @@ const roleUpgrader = {
             ...room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_EXTENSION}),
             spawn
         ]});
-        console.log(`Spawning new ${role} ${name} in ${room.name}`);
+        console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },

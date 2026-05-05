@@ -162,7 +162,7 @@ loop = function () {
                 }
             }
         }
-        console.log("Died creeps and orphan rooms memory have been deleted");
+        console.log("[GC] Died creeps and orphan rooms memory have been deleted");
     } catch(err) { err.log(); };
 
     for (const name in Game.creeps) try {

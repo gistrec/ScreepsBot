@@ -64,7 +64,9 @@ function computeClearRadius(roomName) {
 
     for (let y = 0; y < 50; y++) {
         for (let x = 0; x < 50; x++) {
-            const onEdge = (x == 0 || y == 0 || x == 49 || y == 49);
+            // Exit-зона 2 клетки: на (0,1,48,49) ставить структуры нельзя,
+            // считаем эти ряды как стены при поиске свободного квадрата.
+            const onEdge = (x <= 1 || y <= 1 || x >= 48 || y >= 48);
             const isWall = terrain.get(x, y) & TERRAIN_MASK_WALL;
             dist[y * 50 + x] = (onEdge || isWall) ? 0 : INF;
         }

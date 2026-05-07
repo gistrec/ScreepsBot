@@ -152,6 +152,87 @@ Memory.rooms.W12S39.lab_stuck_evac_delay = 1000;
 
 ---
 
+## 🎯 Ручные триггеры
+
+Одноразовые задачи: ставятся в Memory или флагом, бот их подхватывает на следующем тике.
+
+### Снести структуру в чужой/нейтральной комнате
+
+`Memory.wall_break` — задача на единственный wall_breaker-крип (25×WORK + 25×MOVE = 2500 ⚡).
+Снимается автоматически при уничтожении цели.
+
+```js
+Memory.wall_break = {
+    target_id:   '<id структуры>',  // wall, rampart, spawn, etc.
+    target_room: 'W13S37',
+    home_room:   'W12S39',          // RCL ≥ 4, откуда спавним
+    boost:       'ZH',              // optional - буст dismantle
+};
+```
+
+DPS:
+| Буст      | dmg/тик | За одну жизнь (1500) |
+|-----------|---------|----------------------|
+| без буста | 1250    | 1.875M HP            |
+| `ZH` ×2   | 2500    | 3.75M  HP            |
+| `ZH2O` ×3 | 3750    | 5.625M HP            |
+| `XZH2O` ×4| 5000    | 7.5M   HP            |
+
+Стенка на 2M HP — обязательно с `boost: 'ZH'`, иначе нужно две жизни (после смерти крипа задача
+остаётся, новый прилетит автоматически).
+
+Boost требует чтобы 750 нужного минерала лежали в свободной лабе с container'ом —
+`taskBoost` найдёт сам.
+
+### Claim новой комнаты
+
+`Game.flags['Expand']` — ставится прямо в игре, в **центре** будущей базы (не в позиции спавна).
+Спавн будет +2 east от флага.
+
+Поток: `idle → claiming` (claimer едет, кладёт CS спавна) → `building` (3× remoteUpgrader строят
++ качают) → `idle` (флаг автоудаляется при появлении спавна). Дальше `build.process` накатывает
+schemes 1..8 вокруг.
+
+Сбросить — снять флаг, на след. тике status вернётся в `idle`.
+
+### Превью места под базу
+
+`Memory.base_previews` — визуальный оверлей 13×13 footprint'а в комнате, без всяких действий.
+Та же конвенция координат, что у `Game.flags['Expand']`.
+
+```js
+Memory.base_previews = {roomName: 'W13S37', x: 25, y: 30};
+// или несколько вариантов сравнить:
+Memory.base_previews = [
+    {roomName: 'W13S37', x: 25, y: 30, name: 'A'},
+    {roomName: 'W13S37', x: 27, y: 28, name: 'B'},
+];
+delete Memory.base_previews;
+```
+
+Подсветка: красные клетки — стены или exit-зона (2 клетки от края, не одна).
+Голубая точка — место будущего флага. Оранжевый круг — место будущего спавна (+2 east от флага).
+Поверх — буквы структур из schemes 1..8 (B/E/T/L/M/C/F/N/O/P/H/S/`·`).
+
+### Прочие точечные настройки
+
+```js
+// PowerBank-фарм - порог приёма банка.
+Memory.power_bank_max_hits     = 700_000;
+Memory.power_bank_max_distance = 4;
+Memory.power_bank_min_amount   = 2000;
+
+// Покупка G на маркете для nuker'а - opt-in per-room.
+Memory.rooms.W12S39.nuker_buy_max_price = 200;
+
+// Remote mining энергии. На каждый target_room - 2 harvester'а + 1 reserver.
+Memory.remote_rooms = {
+    'W12S39': ['W12S38', 'W11S38'],
+};
+```
+
+---
+
 ## 🏗️ Архитектура
 
 Высокоуровнево, каждый тик `main.js`:
@@ -220,6 +301,7 @@ default/
     remoteUpgrader.js    — апгрейд чужого контроллера
     controllerUpgrader.js
     safeModeGenerator.js — enabler safeMode через ghodium
+    wallBreaker.js       — разовый снос стены/структуры в чужой комнате (см. Memory.wall_break)
   tasks/                 — общие подпрограммы
     boost.js             — лабораторный буст крипов
     creep.js             — TTL renew, recycle, goto

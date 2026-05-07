@@ -20,8 +20,8 @@ const O = STRUCTURE_OBSERVER
 const P = STRUCTURE_POWER_SPAWN
 const H = STRUCTURE_RAMPART   // Hardwall
 
-const spawn_offset_x = 8;
-const spawn_offset_y = 6;
+const spawn_offset_x = exports.spawn_offset_x = 8;
+const spawn_offset_y = exports.spawn_offset_y = 6;
 
 const skip_rooms = ["W9S37", "W8S38"]
 
@@ -29,7 +29,7 @@ const skip_rooms = ["W9S37", "W8S38"]
 // TODO: Build links near sources
 //       Add links to modules/links automatically
 
-const schemes = {
+const schemes = exports.schemes = {
     1: [
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],

@@ -1,5 +1,24 @@
 const lab = require('modules/lab');
+const buildModule = require('modules/build');
 const utils = require('utils');
+
+// Однобуквенные коды структур из modules/build.js (см. const B/R/S/E/T/L/M/C/F/N/O/P/H).
+// Используем для overlay-превью базы по флагу.
+const STRUCTURE_PREVIEW_LABEL = {
+    [STRUCTURE_SPAWN]:       {ch: 'B', color: '#ffaa00'},
+    [STRUCTURE_ROAD]:        {ch: '·', color: '#888888'},
+    [STRUCTURE_STORAGE]:     {ch: 'S', color: '#44aaff'},
+    [STRUCTURE_EXTENSION]:   {ch: 'E', color: '#ffcc44'},
+    [STRUCTURE_TOWER]:       {ch: 'T', color: '#ff4444'},
+    [STRUCTURE_LINK]:        {ch: 'L', color: '#aaaaff'},
+    [STRUCTURE_TERMINAL]:    {ch: 'M', color: '#44aaff'},
+    [STRUCTURE_LAB]:         {ch: 'C', color: '#ff44ff'},
+    [STRUCTURE_FACTORY]:     {ch: 'F', color: '#cccccc'},
+    [STRUCTURE_NUKER]:       {ch: 'N', color: '#ff4444'},
+    [STRUCTURE_OBSERVER]:    {ch: 'O', color: '#aaaaff'},
+    [STRUCTURE_POWER_SPAWN]: {ch: 'P', color: '#ff44ff'},
+    [STRUCTURE_RAMPART]:     {ch: 'H', color: '#88ff88'},
+};
 
 let statuses = {}
 
@@ -235,6 +254,109 @@ function visualiseLabFlows() {
     }
 }
 
+// Превью базы из Memory.base_previews. Формат:
+//   Memory.base_previews = [{roomName, x, y, name?}, ...]
+// (x, y) - центр будущей базы (та же конвенция, что у Game.flags['Expand']:
+// claimer.js строит спавн в expand.pos.x + 2). База - квадрат 13x13 с центром
+// в (x, y), спавн получится в (x+2, y).
+function visualizeBasePreview() {
+    const previews = Memory.base_previews;
+    if (!previews) return;
+    const list = Array.isArray(previews) ? previews : [previews];
+
+    // Спавн в схеме сидит на (8, 6), центр 13x13 - на (6, 6). Спавн смещён
+    // на +2 east от центра. Анкор-точка (preview.x, preview.y) = центр базы,
+    // спавн строится в (preview.x + 2, preview.y) - так же, как в claimer.js.
+    const HALF = 6;
+    const SIZE = 13;
+
+    for (const preview of list) {
+        if (!preview || !preview.roomName || preview.x == null || preview.y == null) continue;
+
+        const roomName = preview.roomName;
+        const visual = new RoomVisual(roomName);
+
+        const xMin = preview.x - HALF;
+        const yMin = preview.y - HALF;
+        const spawnX = preview.x + 2;
+        const spawnY = preview.y;
+
+        // Проверяем терраин (работает без видимости комнаты).
+        const terrain = Game.map.getRoomTerrain(roomName);
+        let conflicts = 0;
+        // Все плохие клетки красим одинаково, чтобы было видно. Различаем причину
+        // только в логике подсчёта conflicts (пользователю достаточно увидеть, где).
+        const badCells = [];
+
+        for (let dy = 0; dy < SIZE; dy++) {
+            for (let dx = 0; dx < SIZE; dx++) {
+                const wx = xMin + dx;
+                const wy = yMin + dy;
+                // Exit-зона 2 клетки: строки/столбцы 0,1 и 48,49 не позволяют ставить
+                // структуры (createConstructionSite вернёт ERR_INVALID_TARGET).
+                // wx < 0 / wx > 49 - footprint вылез за границу комнаты целиком, тоже считаем bad.
+                if (wx < 2 || wx > 47 || wy < 2 || wy > 47) {
+                    badCells.push([wx, wy]);
+                    conflicts++;
+                    continue;
+                }
+                if (terrain.get(wx, wy) & TERRAIN_MASK_WALL) {
+                    badCells.push([wx, wy]);
+                    conflicts++;
+                }
+            }
+        }
+
+        // Заливка плохих клеток. Off-room (wx<0 или wx>49) не рисуем -
+        // их всё равно прижмёт к одному и тому же краю и получится яркая полоса.
+        // Конфликт уже виден по красному контуру и счётчику в статусе.
+        for (const [x, y] of badCells) {
+            if (x < 0 || x > 49 || y < 0 || y > 49) continue;
+            visual.rect(x - 0.5, y - 0.5, 1, 1, {fill: '#ff0000', opacity: 0.35});
+        }
+
+        // Контур 13x13.
+        const okColor = conflicts == 0 ? '#44ff88' : '#ff6666';
+        visual.rect(xMin - 0.5, yMin - 0.5, SIZE, SIZE, {
+            fill: 'transparent', stroke: okColor, lineStyle: 'dashed', opacity: 0.8,
+        });
+
+        // Overlay структур из schemes 1..8.
+        const schemes = buildModule.schemes;
+        // Уровень самый высокий, который выводим - все структуры собираются кумулятивно.
+        for (let lvl = 1; lvl <= 8; lvl++) {
+            const scheme = schemes[lvl];
+            if (!scheme) continue;
+            for (let sy = 0; sy < scheme.length; sy++) {
+                for (let sx = 0; sx < scheme[sy].length; sx++) {
+                    const s = scheme[sy][sx];
+                    if (!s) continue;
+                    const wx = xMin + sx;
+                    const wy = yMin + sy;
+                    if (wx < 0 || wx > 49 || wy < 0 || wy > 49) continue;
+                    const label = STRUCTURE_PREVIEW_LABEL[s];
+                    if (!label) continue;
+                    visual.text(label.ch, wx, wy + 0.2, {color: label.color, font: 0.5, opacity: 0.9});
+                }
+            }
+        }
+
+        // Подпись над верхней гранью: имя превью (если задано) и статус.
+        const tag = preview.name ? `${preview.name}: ` : '';
+        const status = conflicts == 0
+            ? `${tag}Base fits ✓ (center ${preview.x},${preview.y} → spawn ${spawnX},${spawnY})`
+            : `${tag}Conflict ✗ (${conflicts} bad cells)`;
+        visual.text(status, preview.x, yMin - 0.7, {color: okColor, font: 0.6, align: 'center'});
+
+        // Подсветка клетки будущего спавна (оранжевый круг).
+        visual.circle(spawnX, spawnY, {radius: 0.4, fill: '#ffaa00', opacity: 0.5});
+
+        // Маркер центра базы = место для флага Expand. Маленькая точка, без подписи -
+        // чтобы не отвлекало.
+        visual.circle(preview.x, preview.y, {radius: 0.15, fill: '#00ddff', opacity: 0.6});
+    }
+}
+
 // Маркер пригодности комнаты под claim. Берёт данные из Memory.roomSurvey
 // (заполняется modules/roomSurvey). Свои комнаты пропускаем - у них свой стек
 // индикаторов; highway не интересует. Иконка в правом-верхнем углу клетки карты,
@@ -307,4 +429,5 @@ exports.process = function() {
     visualiseLabFlows();
     visualisePowerBankFlows();
     visualiseRoomSurveyMap();
+    visualizeBasePreview();
 }

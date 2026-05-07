@@ -34,6 +34,8 @@ const roleRampartDefender    = require('roles/rampartDefender');
 const roleSafeModeGenerator  = require('roles/safeModeGenerator');
 const roleControllerUpgrader = require('roles/controllerUpgrader');
 
+const roleWallBreaker        = require('roles/wallBreaker');
+
 const rolePowerBankAttacker  = require('roles/powerBankAttacker');
 const rolePowerBankHealer    = require('roles/powerBankHealer');
 const rolePowerCarrier       = require('roles/powerCarrier');
@@ -133,6 +135,7 @@ loop = function () {
     try { moduleObserver.process();        } catch (err) { err.log() }
     try { moduleExpansion.process();       } catch (err) { err.log() }
     try { moduleRoomSurvey.process();      } catch (err) { err.log() }
+    try { roleWallBreaker.spawn();         } catch (err) { err.log() }
     try { moduleResourceBalance.process(); } catch (err) { err.log() }
     try { modulePower.process();           } catch (err) { err.log() }
     try { modulePowerBank.process();       } catch (err) { err.log() }
@@ -228,6 +231,10 @@ loop = function () {
 
             case 'safe_mode_generator':
                 roleSafeModeGenerator.run(creep);
+                break;
+
+            case 'wall_breaker':
+                roleWallBreaker.run(creep);
                 break;
 
             case 'powerBankAttacker':

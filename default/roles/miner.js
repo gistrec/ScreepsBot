@@ -138,9 +138,11 @@ const roleMiner = {
         // Не майним, если outlet'ов нет: линк забит/отсутствует И под крипом нет контейнера
         // со свободным местом. Намеренно не смотрим на трюм - даже частично наполненный
         // трюм без outlet'а это тупик (умрём -> tombstone -> drop -> чарджеры отвлекаются).
+        // Исключение - бутстрап-конфиг без CARRY: ёмкости нет, энергия падает на землю,
+        // её подберёт harvester. Иначе первый майнер в новой комнате не начнёт майнить.
         const linkFull = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
         const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
-        if (linkFull && !containerUsable) {
+        if (creep.store.getCapacity(RESOURCE_ENERGY) && linkFull && !containerUsable) {
             return;
         }
 

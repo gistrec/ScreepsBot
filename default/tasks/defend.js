@@ -49,12 +49,26 @@ exports.checkStatus = function(room) {
     const spawnDamaged = criticalTypes
         .flatMap(t => myByType[t] || [])
         .filter(s => s.hits != s.hitsMax);
+    // rampart_super_damaged как fail-safe срабатывал на статичных низких рампартах: один
+    // случайный враг + давно недоремонтированные барьеры = впустую сожжённый safe mode.
+    // Требуем чтобы (а) урон шёл прямо сейчас (drop > 0) и (б) врагов было >=2 - один
+    // проходящий scout/Invader не должен триггерить.
+    const rampartSuperDamagedTrigger = rampartSuperDamaged.length && maxRampartDrop > 0 && enemyCreeps.length >= 2;
+
     // Включаем SafeMode, если барьер или спаун повреждены.
     // Проверка на наличие врагов добавлена чтобы барьер нечайно сам не регрессировал + при апгрейде контроллера.
-    if ((rampartSuperDamaged.length || spawnDamaged.length || rampartUnderAttack) && enemyCreeps.length && controller.safeModeAvailable && !controller.upgradeBlocked) {
+    if ((rampartSuperDamagedTrigger || spawnDamaged.length || rampartUnderAttack) && enemyCreeps.length && controller.safeModeAvailable && !controller.upgradeBlocked) {
+        const reasons = [];
+        if (rampartSuperDamagedTrigger) reasons.push(`rampart_super_damaged (${rampartSuperDamaged.length} <5% HP, drop=${maxRampartDrop}, enemies=${enemyCreeps.length})`);
+        if (spawnDamaged.length)        reasons.push(`critical_struct_damaged (${spawnDamaged.map(s => s.structureType).join(',')})`);
+        if (rampartUnderAttack)         reasons.push(`rampart_under_attack (drop=${maxRampartDrop})`);
+
+        const lowestRampart = _.min(allRamparts, r => r.hits);
+        const lowestHits = (lowestRampart && lowestRampart.hits !== Infinity) ? lowestRampart.hits : 'n/a';
+
         const text = `Safe mode was enabled for room ${room.name}\n` +
-                     `Is rampart damaged: ${rampartDamaged.length ? 'true' : 'false'}\n` +
-                     `Is spawn damaged: ${spawnDamaged.length ? 'true' : 'false'}\n` +
+                     `Trigger: ${reasons.join(', ')}\n` +
+                     `Lowest rampart: ${lowestHits} HP, max drop this tick: ${maxRampartDrop}\n` +
                      `${enemyCreeps.length} enemy creeps`;
         console.log(text);
         Game.notify(text);

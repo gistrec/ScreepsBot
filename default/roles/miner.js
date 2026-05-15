@@ -15,8 +15,9 @@ const taskResource = require('../tasks/resource');
 const DEFAULT_MINER_PAUSE_TOTAL_ENERGY = 2_000_000;
 
 const configurations = [
-    // Когда на старте есть максимум 300 энергии, спавним простого рабочего.
-    {"energy": 250,  "miningPower": "1", "parts": [WORK, WORK, MOVE]},
+    // Bootstrap RCL 2: WORK+CARRY+2*MOVE. С CARRY сам носит энергию в спавн до появления
+    // чарджера (без неё энергия дропается и decay-ится - тупик). 2 MOVE = 0 fatigue на plain.
+    {"energy": 250,  "miningPower": "1", "parts": [WORK, CARRY, MOVE, MOVE]},
     // Когда появились 5 Extension (на 2 уровне контроллера).
     {"energy": 550,  "miningPower": "1", "parts": [WORK, WORK, WORK, WORK, WORK, MOVE]},
     // Когда в мнате появляются линки
@@ -58,6 +59,9 @@ const roleMiner = {
             return true;
         }
 
+        // Charger-parity gate: не плодим миннеров, для которых нет чарджера, иначе энергия
+        // копится в контейнере / на земле. На bootstrap'е charger.spawn капится до 1, что
+        // через этот gate автоматически даёт ровно 1 миннера до построения контейнера.
         const charger = utils.creepsByRole(room, "charger");
         if (miners.length > charger.length) {
             return true;
@@ -134,15 +138,24 @@ const roleMiner = {
         }
 
         const link = Game.structures[creep.memory.link_id];
-
-        // Не майним, если outlet'ов нет: линк забит/отсутствует И под крипом нет контейнера
-        // со свободным местом. Намеренно не смотрим на трюм - даже частично наполненный
-        // трюм без outlet'а это тупик (умрём -> tombstone -> drop -> чарджеры отвлекаются).
-        // Исключение - бутстрап-конфиг без CARRY: ёмкости нет, энергия падает на землю,
-        // её подберёт harvester. Иначе первый майнер в новой комнате не начнёт майнить.
         const linkFull = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
         const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
-        if (creep.store.getCapacity(RESOURCE_ENERGY) && linkFull && !containerUsable) {
+        const carryCap = creep.store.getCapacity(RESOURCE_ENERGY) || 0;
+        const isFull = carryCap > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
+
+        // Если есть CARRY и ни линка, ни контейнера под нами нет:
+        // - В established комнате (есть storage) просто дропаем у source - чарджер заберёт,
+        //   тащиться через всю базу в спавн неоправданно.
+        // - В bootstrap-комнате (нет storage, RCL<4) сами доставляем в спавн/extension,
+        //   потому что иначе спавн остаётся пустым: 250e ушло на миннера, чарджеру неоткуда.
+        if (isFull && linkFull && !containerUsable) {
+            if (creep.room.storage) {
+                creep.drop(RESOURCE_ENERGY);
+                return;
+            }
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_SPAWN) == OK) return;
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_EXTENSION) == OK) return;
+            creep.drop(RESOURCE_ENERGY);
             return;
         }
 

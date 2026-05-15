@@ -114,6 +114,69 @@ exports.fillNukerIfCalm = function(creep) {
     return exports.fillClosestStructure(creep, STRUCTURE_NUKER);
 }
 
+// Мгновенная закупка минерала через market.deal по самому дешёвому SELL <= maxPrice.
+// Используется для буста powerBank-сквада: банк decay'ится по тикам, ждать заполнения
+// собственного BUY-ордера рискованно. Платим больше, но получаем минерал сейчас.
+//
+// Возвращает true, если в комнате (storage+terminal) уже >= need требуемого минерала
+// (или мы только что докупили достаточно). Возвращает false, если докупить не удалось -
+// caller должен повторить вызов на следующем проходе.
+//
+// Memory overrides:
+//   Memory.boost_buy_max_price[resourceType] - cap cr/u для конкретного минерала
+//   Memory.boost_buy_max_price_default       - cap cr/u по умолчанию (default 5000)
+//   Memory.boost_buy_min_credits             - min credit reserve (default 500_000)
+exports.buyMineralForBoost = function(room, resourceType, need) {
+    if (!room.terminal) return false;
+    if (need <= 0) return true;
+
+    const have = (room.terminal ? room.terminal.store.getUsedCapacity(resourceType) : 0)
+              + (room.storage  ? room.storage.store.getUsedCapacity(resourceType)  : 0);
+    if (have >= need) return true;
+
+    if (room.terminal.cooldown > 0) return false;
+
+    const shortfall = need - have;
+    if (room.terminal.store.getFreeCapacity() < shortfall) {
+        console.log(`[${room.name}][Boost-Buy] Terminal full, can't fit ${shortfall} ${resourceType}.`);
+        return false;
+    }
+
+    const priceMap = Memory.boost_buy_max_price || {};
+    const maxPrice = priceMap[resourceType] || Memory.boost_buy_max_price_default || 5000;
+    const minCredits = Memory.boost_buy_min_credits || 500000;
+
+    const sellOrders = Game.market.getAllOrders({type: ORDER_SELL, resourceType})
+        .filter(o => o.amount > 0 && o.roomName && o.price <= maxPrice)
+        .sort((a, b) => a.price - b.price);
+    if (sellOrders.length === 0) {
+        console.log(`[${room.name}][Boost-Buy] No SELL orders for ${resourceType} <= ${maxPrice} cr/u (need ${shortfall}).`);
+        return false;
+    }
+
+    const order = sellOrders[0];
+    const buyAmount = Math.min(shortfall, order.amount, room.terminal.store.getFreeCapacity());
+    const energyCost = Game.market.calcTransactionCost(buyAmount, room.name, order.roomName);
+    if (room.terminal.store.getUsedCapacity(RESOURCE_ENERGY) < energyCost) {
+        console.log(`[${room.name}][Boost-Buy] Terminal energy ${room.terminal.store.getUsedCapacity(RESOURCE_ENERGY)} < ${energyCost} (for ${buyAmount} ${resourceType} from ${order.roomName}).`);
+        return false;
+    }
+
+    const totalCost = order.price * buyAmount;
+    if (Game.market.credits - totalCost < minCredits) {
+        console.log(`[${room.name}][Boost-Buy] Credits ${Game.market.credits} - ${totalCost} < reserve ${minCredits} for ${buyAmount} ${resourceType}.`);
+        return false;
+    }
+
+    const result = Game.market.deal(order.id, buyAmount, room.name);
+    if (result == OK) {
+        console.log(`[${room.name}][Boost-Buy] Bought ${buyAmount} ${resourceType} @ ${order.price} cr/u from ${order.roomName} (cost ${totalCost} cr, energy ${energyCost}).`);
+        return have + buyAmount >= need;
+    }
+    console.log(`[${room.name}][Boost-Buy] market.deal failed for ${resourceType}: ${result} ${result.toStringStatus()}`);
+    return false;
+}
+
 // Покупка G для nuker'а через свой ORDER_BUY (а не market.deal по чужим SELL).
 // Цена = min(max_price, cheapest_sell - 1), чтобы быть top-bid'ом и не переплачивать
 // весь спред. Платим 5% fee на сумму ордера, продавец платит transaction cost.
@@ -182,7 +245,7 @@ exports.buyNukerGhodium = function(room) {
     if (result == OK) {
         console.log(`[${room.name}][NUKER] Posted BUY ${need} G @ ${ourPrice} cr/u (fee ~${fee} cr, lowest sell ${lowestSell}).`);
     } else {
-        console.log(`[${room.name}][NUKER] createOrder failed: ${result}`);
+        console.log(`[${room.name}][NUKER] createOrder failed: ${result} ${result.toStringStatus()}`);
     }
 }
 

@@ -66,7 +66,7 @@ function spawnDeadOperators() {
         if (result === OK) {
             console.log(`[${roomName}][POWER] Spawned operator ${pc.name}.`);
         } else {
-            console.log(`[${roomName}][POWER] pc.spawn failed: ${result}`);
+            console.log(`[${roomName}][POWER] pc.spawn failed: ${result} ${result.toStringStatus()}`);
         }
     }
 }

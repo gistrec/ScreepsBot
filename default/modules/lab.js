@@ -103,6 +103,21 @@ const rooms = exports.rooms = {
 // освобождается и тут же снова забивается. Override per-room через memory.
 const DEFAULT_LAB_STUCK_EVAC_DELAY = 500;
 
+// Лабы, занятые активным буст-таском (powerBank attacker/healer и т.п.) - lab.js должен
+// пропускать их в runReaction/forceEvacuateLabs, иначе runReaction дампит boost-минерал
+// сразу после того как чарджер его залил. Реквизит - creep.memory.boost_force=true и
+// creep.memory.lab_id указывает на target-лабу.
+function getBoostReservedLabIds() {
+    const ids = new Set();
+    for (const name in Game.creeps) {
+        const c = Game.creeps[name];
+        if (c.memory.boost_force && c.memory.lab_id) {
+            ids.add(c.memory.lab_id);
+        }
+    }
+    return ids;
+}
+
 // Насыщение downstream: ресурс считается "ненужным", если у каждого потребителя
 // уже >= этого порога в storage+terminal. Для финальных продуктов (без потребителей)
 // функция возвращает false - такие копим до локального cap'а.
@@ -185,8 +200,10 @@ function updateLabStatus(room, expectedOutput, source1, source2) {
 // Запускается, когда stuck-статус продержался дольше evacDelay - чтобы освободить
 // лабы для других задач (boost, смена реакции). Throttle: 1 transfer-task за вызов.
 function forceEvacuateLabs(room, expectedOutput) {
+    const reservedLabs = getBoostReservedLabIds();
     const targetLabs = labs[room.name]["targets"].map(id => Game.getObjectById(id)).filter(l => l);
     for (const lab of targetLabs) {
+        if (reservedLabs.has(lab.id)) continue;
         if (!lab.mineralType) continue;
         if (lab.store.getUsedCapacity(lab.mineralType) == 0) continue;
 
@@ -242,8 +259,13 @@ exports.runReaction = function(room) {
     // лишние назначения упадут с "No creep to transfer".
     let transfersQueued = 0;
 
+    const reservedLabs = getBoostReservedLabIds();
+
     let reactionsQueued = 0;
     for (const lab_id of labs[room.name]["targets"]) try {
+        // Лаба занята активным буст-таском - не запускаем реакции и не дампим её содержимое,
+        // иначе boost.js придётся постоянно перезаливать её через чарджера.
+        if (reservedLabs.has(lab_id)) continue;
         const lab = Game.getObjectById(lab_id);
         if (!lab) {
             console.log(`[${room.name}] Нет target лаборатории ${lab_id}`);

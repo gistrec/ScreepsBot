@@ -1,6 +1,5 @@
 const profiler = require('../screeps-profiler');
 
-// TODO: Check container near source
 // TODO: Check link near source
 
 const _ = null;
@@ -18,7 +17,6 @@ const F = STRUCTURE_FACTORY
 const N = STRUCTURE_NUKER
 const O = STRUCTURE_OBSERVER
 const P = STRUCTURE_POWER_SPAWN
-const H = STRUCTURE_RAMPART   // Hardwall
 
 const spawn_offset_x = exports.spawn_offset_x = 8;
 const spawn_offset_y = exports.spawn_offset_y = 6;
@@ -141,25 +139,85 @@ const schemes = exports.schemes = {
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
         [_, _, _, _, _, _, _, _, _, _, _, _, _],
     ],
-    // RCL 8: +9 ext, +1 spawn, +3 towers, nuker, observer, power spawn, +4 labs,
-    // плюс рампарты по периметру 13×13 и в "дырах" между структурами в стенке базы.
+    // RCL 8: полный snapshot layout-а W9S39 (storage в центре сетки [6][6]).
+    // Включает все структуры всех RCL (ext/road/spawn/tower/link/lab/factory/terminal/
+    // storage/nuker/observer/power_spawn) - ниже RCL 8 двигатель отказывает в превышающих
+    // cap'ы construction site, поэтому дублирование с schemes[2..7] безвредно.
+    // Рампарты создаются отдельным rampart-builder'ом 3-клеточной полосой по периметру.
     8: [
-        [H, H, H, H, H, H, H, H, H, H, H, H, H],
-        [H, _, _, _, H, _, _, _, H, _, _, N, H],
-        [H, _, _, H, _, H, P, H, _, H, O, _, H],
-        [H, _, H, _, _, _, _, _, _, _, H, _, H],
-        [H, H, _, _, T, _, _, _, _, _, _, H, H],
-        [H, _, H, _, _, _, _, _, _, _, H, _, H],
-        [H, _, T, _, _, _, _, _, _, _, T, _, H],
-        [H, _, H, _, _, _, _, _, _, _, H, _, H],
-        [H, H, _, _, _, _, _, _, _, _, _, H, H],
-        [H, _, H, _, _, _, _, _, _, _, H, _, H],
-        [H, _, E, H, E, H, B, H, _, H, C, C, H],
-        [H, E, E, E, H, E, E, E, H, C, C, E, H],
-        [H, H, H, H, H, H, H, H, H, H, H, H, H],
+        [R, R, R, R, R, R, R, R, R, R, R, R, R],
+        [R, E, E, E, R, E, E, E, R, E, E, N, R],
+        [R, E, E, R, E, R, P, R, E, R, O, E, R],
+        [R, E, R, E, E, E, R, E, E, E, R, E, R],
+        [R, R, E, E, T, R, R, R, T, E, E, R, R],
+        [R, E, R, E, R, R, L, F, R, E, R, E, R],
+        [R, E, T, R, B, R, S, R, B, R, T, E, R],
+        [R, E, R, E, R, R, M, R, R, E, R, E, R],
+        [R, R, E, E, T, R, R, R, T, C, C, R, R],
+        [R, E, R, E, E, E, R, E, C, C, R, C, R],
+        [R, E, E, R, E, R, B, R, C, R, R, C, R],
+        [R, E, E, E, R, E, E, E, R, C, C, E, R],
+        [R, R, R, R, R, R, R, R, R, R, R, R, R],
     ],
 };
 
+
+// Контейнер у source - привязка к координатам в schemes[] невозможна (источники в каждой
+// комнате в своём месте). Ставим site на adjacent-клетке, ближайшей по пути к storage
+// (или к спавну в bootstrap). Контейнер доступен с RCL 0, поэтому вызываем отдельно
+// от scheme-flow (buildMissingStructures гейтится last_build_level - в existing комнатах
+// сработал бы только раз в 500 тиков). sources.js привязывает container_id к майнеру
+// через isNearTo(source) - совместимо.
+function buildContainersNearSources(room) {
+    const spawn = room.find(FIND_MY_SPAWNS).shift();
+    if (!spawn && !room.storage) return;
+
+    const sources = room.find(FIND_SOURCES);
+    const terrain = room.getTerrain();
+    const target = room.storage || spawn;
+
+    for (const source of sources) {
+        const hasContainer = source.pos.findInRange(FIND_STRUCTURES, 1, {
+            filter: s => s.structureType == STRUCTURE_CONTAINER
+        }).length > 0;
+        if (hasContainer) continue;
+        const hasSite = source.pos.findInRange(FIND_CONSTRUCTION_SITES, 1, {
+            filter: s => s.structureType == STRUCTURE_CONTAINER
+        }).length > 0;
+        if (hasSite) continue;
+
+        const candidates = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const x = source.pos.x + dx;
+                const y = source.pos.y + dy;
+                if (x < 1 || x > 48 || y < 1 || y > 48) continue;
+                if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+
+                const pos = new RoomPosition(x, y, room.name);
+                // Контейнер не может стоять поверх non-rampart структуры. Road - редкий
+                // конфликт у source, но всё равно блокирует createConstructionSite.
+                const blocked = pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType != STRUCTURE_RAMPART);
+                if (blocked) continue;
+                candidates.push(pos);
+            }
+        }
+
+        if (candidates.length === 0) {
+            console.log(`[${room.name}][BUILD] No walkable adjacent tile for container near source ${source.id}`);
+            continue;
+        }
+        const best = target.pos.findClosestByPath(candidates) || candidates[0];
+        const result = room.createConstructionSite(best, STRUCTURE_CONTAINER);
+        if (result === OK) {
+            console.log(`[${room.name}][BUILD] Container site placed at ${best.x}:${best.y} for source ${source.id}`);
+        } else {
+            console.log(`[${room.name}][BUILD] createConstructionSite container at ${best.x}:${best.y} failed: ${result} ${result.toStringStatus()}`);
+        }
+    }
+}
+exports.buildContainersNearSources = buildContainersNearSources;
 
 // Extractor лежит на минерале - привязка к фиксированным координатам в schemes[]
 // невозможна (минерал в каждой комнате в своём месте). Ставим его отдельно по
@@ -173,17 +231,53 @@ function buildExtractor(room) {
     room.createConstructionSite(mineral.pos, STRUCTURE_EXTRACTOR);
 }
 
+// Рампарты по периметру базы 3-клеточной полосой (layer 0 - граница 13×13 schemes,
+// layer 1/2 - две внутренние "обоймы"). Ставим только при RCL 8: на меньших уровнях
+// нет energy-budget'а на поддержание ~120 рампартов через decay/towers.
+// Ramparts могут наслаиваться поверх любых structure - createConstructionSite сработает
+// и на extension/tower/lab; на terrain wall - пропускаем.
+function buildRamparts(room, spawn) {
+    if (room.controller.level < 8) return;
+
+    const terrain = room.getTerrain();
+    const SIZE = 13;
+    const LAYERS = 3;
+
+    for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+            const layer = Math.min(x, y, SIZE - 1 - x, SIZE - 1 - y);
+            if (layer >= LAYERS) continue;
+
+            const px = spawn.pos.x + x - spawn_offset_x;
+            const py = spawn.pos.y + y - spawn_offset_y;
+            if (px < 1 || px > 48 || py < 1 || py > 48) continue;
+            if (terrain.get(px, py) === TERRAIN_MASK_WALL) continue;
+
+            const pos = new RoomPosition(px, py, room.name);
+            if (pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType == STRUCTURE_RAMPART)) continue;
+            if (pos.lookFor(LOOK_CONSTRUCTION_SITES).some(s => s.structureType == STRUCTURE_RAMPART)) continue;
+
+            room.createConstructionSite(pos, STRUCTURE_RAMPART);
+        }
+    }
+}
+
+// Возвращает true, когда обработка выполнена (нашли спавн и прошлись по schemes),
+// false при ранних выходах. Caller (build.process) использует это, чтобы не пометить
+// уровень комнаты "обработанным" если на самом деле не разместили ни одной structure -
+// иначе после level-up до спавн-постройки сайты scheme'а отложатся до 500-тик цикла.
 exports.buildMissingStructures = function(room) {
     if (!room.controller || !room.controller.my) {
         console.log(`[${room.name}][BUILD] Room is not mine`);
-        return;
+        return false;
     }
     const spawn = room.find(FIND_MY_SPAWNS, {filter: (s) => s.structureType == STRUCTURE_SPAWN && s.name == room.name}).shift();
     if (!spawn) {
         console.log(`[${room.name}][BUILD] Spanw not found`);
-        return;
+        return false;
     }
 
+    const terrain = room.getTerrain();
     for (let level = 2; level <= room.controller.level; level++) {
         const scheme = schemes[level];
         for (let y = 0; y < scheme.length; y++) {
@@ -192,22 +286,21 @@ exports.buildMissingStructures = function(room) {
                     continue;
                 }
                 const structure = scheme[y][x];
-                const pos = new RoomPosition(
-                    spawn.pos.x + x - spawn_offset_x,
-                    spawn.pos.y + y - spawn_offset_y,
-                    room.name
-                );
-                // Рампарт может ставиться поверх любой структуры (свой/road/extension и т.п.),
-                // поэтому проверяем "уже есть рампарт", а не "пусто". Остальные типы остаются
-                // строго exclusive: createConstructionSite силится только на чистом тайле.
+                const px = spawn.pos.x + x - spawn_offset_x;
+                const py = spawn.pos.y + y - spawn_offset_y;
+                // На стенах рампарт не строится, поэтому road на стене останется без защиты;
+                // плюс road-on-wall стоит 150× обычного. Прочие структуры на стенах вообще
+                // не ставятся (ERR_INVALID_TARGET). Skip - и для road-кейса, и для самого
+                // факта попадания схемы в стену.
+                if (terrain.get(px, py) === TERRAIN_MASK_WALL) continue;
+
+                const pos = new RoomPosition(px, py, room.name);
+                // Рампарты ставит отдельный rampart-builder, поэтому на тайле под структурой
+                // уже может оказаться рампарт - его игнорируем (createConstructionSite сработает
+                // под рампартом). На прочих структурах createConstructionSite не сработает.
                 const structuresAtPos = pos.lookFor(LOOK_STRUCTURES);
-                if (structure == STRUCTURE_RAMPART) {
-                    if (!structuresAtPos.some(s => s.structureType == STRUCTURE_RAMPART)) {
-                        room.createConstructionSite(pos, structure);
-                    }
-                } else if (structuresAtPos.length === 0
+                if (structuresAtPos.length === 0
                         || structuresAtPos.every(s => s.structureType == STRUCTURE_RAMPART)) {
-                    // На пустом тайле или на тайле где уже только рампарт - можно ставить.
                     room.createConstructionSite(pos, structure);
                 }
             }
@@ -215,6 +308,8 @@ exports.buildMissingStructures = function(room) {
     }
 
     buildExtractor(room);
+    buildRamparts(room, spawn);
+    return true;
 }
 
 exports.process = function() {
@@ -230,15 +325,23 @@ exports.process = function() {
 
         if (Game.time % 10 === 0) {
             if (room.memory.last_build_level !== room.controller.level) {
-                room.memory.last_build_level = room.controller.level;
-
                 console.log(`[${room.name}][BUILD] Building missing structures after level up`);
-                this.buildMissingStructures(room);
+                // last_build_level обновляем только при успехе - чтобы при expansion'е,
+                // когда спавн ещё не построен, повторно пытаться каждые 10 тиков.
+                if (this.buildMissingStructures(room)) {
+                    room.memory.last_build_level = room.controller.level;
+                }
             }
         }
 
         if (Game.time % 500 === 0) {
             this.buildMissingStructures(room);
+        }
+
+        // Контейнеры у source проверяем чаще scheme-flow: они не зависят от RCL и нужны
+        // максимально рано (на RCL 2 миннер без CARRY дропает энергию в пустоту).
+        if (Game.time % 50 === 0) {
+            buildContainersNearSources(room);
         }
     }
 }

@@ -36,23 +36,28 @@ String.prototype.roomPosition = function() {
     return new RoomPosition(this.x(), this.y(), this.roomName());
 }
 
+// -6 в Screeps API имеет три имени-алиаса (NOT_ENOUGH_ENERGY/RESOURCES/EXTENSIONS) - все
+// тот же код. По коду неотличить, какой из них вернул движок, поэтому печатаем канонический
+// RESOURCES (как в engine constants).
+const STATUS_NAMES = {
+     0:  'OK',
+    [-1]: 'ERR_NOT_OWNER',
+    [-2]: 'ERR_NO_PATH',
+    [-3]: 'ERR_NAME_EXISTS',
+    [-4]: 'ERR_BUSY',
+    [-5]: 'ERR_NOT_FOUND',
+    [-6]: 'ERR_NOT_ENOUGH_RESOURCES',
+    [-7]: 'ERR_INVALID_TARGET',
+    [-8]: 'ERR_FULL',
+    [-9]: 'ERR_NOT_IN_RANGE',
+    [-10]: 'ERR_INVALID_ARGS',
+    [-11]: 'ERR_TIRED',
+    [-12]: 'ERR_NO_BODYPART',
+    [-14]: 'ERR_RCL_NOT_ENOUGH',
+    [-15]: 'ERR_GCL_NOT_ENOUGH',
+    [-16]: 'ERR_ACCESS_DENIED',
+};
+
 Number.prototype.toStringStatus = function() {
-    switch (Number(this)) {
-        case 0:   return "OK";
-        case -1:  return "ERR_NOT_OWNER";
-        case -2:  return "ERR_NO_PATH";
-        case -3:  return "ERR_NAME_EXISTS";
-        case -4:  return "ERR_BUSY";
-        case -5:  return "ERR_NOT_FOUND";
-        case -6:  return "ERR_NOT_ENOUGH_RESOURCES";
-        case -7:  return "ERR_INVALID_TARGET";
-        case -8:  return "ERR_FULL";
-        case -9:  return "ERR_NOT_IN_RANGE";
-        case -10: return "ERR_INVALID_ARGS";
-        case -11: return "ERR_TIRED";
-        case -12: return "ERR_NO_BODYPART";
-        case -14: return "ERR_RCL_NOT_ENOUGH";
-        case -15: return "ERR_GCL_NOT_ENOUGH";
-        default:  return "UNKNOWN_ERROR";
-    }
+    return STATUS_NAMES[Number(this)] || 'UNKNOWN_ERROR';
 }

@@ -54,7 +54,7 @@ const roleWallBreaker = {
         if (r === OK) {
             console.log(`[${home.name}][wall_breaker] Spawning ${name} → ${task.target_room}${task.boost ? ' (boost ' + task.boost + ')' : ''}`);
         } else {
-            console.log(`[${home.name}][wall_breaker] spawnCreep failed: ${r}`);
+            console.log(`[${home.name}][wall_breaker] spawnCreep failed: ${r} ${r.toStringStatus()}`);
         }
         return false;
     },

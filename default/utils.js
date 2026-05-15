@@ -77,6 +77,36 @@ exports.getMyStructuresByType = function(room) {
     return room._myStructuresByType;
 };
 
+// Нужны ли чарджеры в комнате прямо сейчас. На bootstrap'е RCL 1 (миннер 250e с CARRY,
+// без storage/контейнера/линка) чарджер ничего не возит - миннер сам доставляет в спавн.
+// Спавн чарджера в этом состоянии = слитые 300 энергии и idle-крип у спавна. Как только
+// появляется любой ferrying-target (контейнер у source, линк, storage/terminal) или миннер
+// теряет CARRY (550e config на RCL 2), чарджер становится нужен. Кеш на тик, т.к. вызывается
+// и из miner.spawn, и из charger.spawn.
+exports.needsChargers = function(room) {
+    if (room._needsChargers !== undefined) return room._needsChargers;
+
+    if (room.storage || room.terminal) return room._needsChargers = true;
+
+    const byType = exports.getStructuresByType(room);
+    if ((byType[STRUCTURE_LINK] || []).length > 0) return room._needsChargers = true;
+
+    // Контейнер у любого source - чарджер забирает в storage/spawn.
+    const sources = room.find(FIND_SOURCES);
+    const containers = byType[STRUCTURE_CONTAINER] || [];
+    for (const s of sources) {
+        if (containers.some(c => c.pos.isNearTo(s))) return room._needsChargers = true;
+    }
+
+    // Миннер без CARRY дропает энергию на землю - нужен чарджер чтобы подбирать.
+    // Конфиги в roles/miner.js: 250e с CARRY, 550e без CARRY, 700e+ с CARRY.
+    if (room.energyCapacityAvailable >= 550 && room.energyCapacityAvailable < 700) {
+        return room._needsChargers = true;
+    }
+
+    return room._needsChargers = false;
+}
+
 // Свободный спавн в комнате, готовый принять задачу spawnCreep.
 // Опции:
 //   primaryOnly  - брать только спавн с именем == room.name (legacy hack из CLAUDE.md

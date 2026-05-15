@@ -44,7 +44,11 @@ const roleRemoteUpgrader = {
 
         const name = 'RemoteUpgrader' + Game.time;
         const role = 'remote_upgrader';
-        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role }});
+        // Запоминаем target-комнату в памяти крипа: после удаления флага (на детект-тике)
+        // нужно продолжать работать в новой комнате до TTL, иначе спавн остаётся пустым -
+        // у первого локального миннера config[0] нет CARRY, без RU энергии для чарджера нет.
+        const target_room = expand.pos.roomName;
+        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, target_room }});
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
@@ -52,22 +56,35 @@ const roleRemoteUpgrader = {
     run: function(creep) {
         if (creep.fatigue != 0) return;
 
-        // Едем в удаленную комнату
         const expand = Game.flags["Expand"];
-        if (!expand) {
-            console.log('[EXPANSION] Expand flag not found - stop claiming')
-            Memory.expansion.status = STATUS_IDLE;
-
-            // Не уничтожаем крипа
-            return;
-        } else if (expand.room.name != creep.room.name) {
-            creep.moveTo(expand, {reusePath: 10});
+        // Миграция для крипов, заспавненных до фикса памяти - подхватываем имя комнаты
+        // из активного флага.
+        if (!creep.memory.target_room && expand) {
+            creep.memory.target_room = expand.pos.roomName;
+        }
+        const targetRoom = creep.memory.target_room;
+        if (!targetRoom) {
+            // Ни флага, ни памяти - крип не знает куда идти. Suicide чтобы не висел.
+            creep.suicide();
             return;
         }
 
-        // Проверяем не построен ли спавн
+        // Если ещё не в целевой комнате - двигаемся туда. С флагом удобнее (нормальный
+        // pathfinding в moveTo), без флага - целимся в центр комнаты как best-effort.
+        if (creep.room.name != targetRoom) {
+            if (expand) {
+                creep.moveTo(expand, {reusePath: 10});
+            } else {
+                creep.moveTo(new RoomPosition(25, 25, targetRoom), {reusePath: 10});
+            }
+            return;
+        }
+
+        // В целевой комнате. Проверяем не построен ли спавн (детект-тик: снимаем флаг,
+        // дальше RU остаётся живым и продолжает заливать спавн до TTL - это важно для
+        // bootstrap'а, без этого спавн остаётся почти пустым и первый миннер съедает всё).
         const isTenthSecond = (Game.time % 10 === 0);
-        if (isTenthSecond && Memory.expansion.status == STATUS_BUILDING) {
+        if (expand && isTenthSecond && Memory.expansion.status == STATUS_BUILDING) {
             const spawns = creep.room.find(FIND_MY_SPAWNS);
             if (spawns.length > 0) {
                 Memory.expansion.status = STATUS_IDLE;
@@ -75,7 +92,7 @@ const roleRemoteUpgrader = {
                 console.log(`[${creep.room.name}][EXPANSION] Claiming finished. Spawn was built`);
                 console.log(`[${creep.room.name}][EXPANSION] Flag Expand was deleted`);
                 expand.remove();
-                return;
+                // Не return - продолжаем работать (harvest/fill spawn) на этом же тике.
             }
         }
 

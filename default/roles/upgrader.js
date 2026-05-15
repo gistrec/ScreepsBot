@@ -36,9 +36,7 @@ const roleUpgrader = {
     },
     spawn: function(room) {
         const spawn = utils.findFreeSpawn(room);
-        if (!spawn) {
-            return true;
-        }
+        if (!spawn) return true;
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         const replacementTtl = utils.minerReplacementTtl(creepConfiguration.parts.length);
@@ -46,31 +44,23 @@ const roleUpgrader = {
         // Не учитываем уходящих - чтобы спавнить замену заранее, а не после смерти.
         // В бутстрапе count=0 в любом случае, фильтр не блокирует первый спавн.
         const upgraders = utils.creepsByRole(room, "upgrader").filter(c => c.ticksToLive > replacementTtl);
+        // Bootstrap (нет ferrying-инфраструктуры) - один апгрейдер, который фокусируется
+        // на постройке контейнера. После того как контейнер построен, needsChargers станет
+        // true и max_count вернёт обычное значение (6 в 300e конфиге).
+        const maxCount = utils.needsChargers(room) ? creepConfiguration.max_count : 1;
+        if (upgraders.length >= maxCount) return true;
 
-        let max_count = creepConfiguration["max_count"];
-        let parts = creepConfiguration["parts"];
-
-        if (upgraders.length >= max_count) {
-            return true;
-        }
-
-        if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+        if (creepConfiguration.energy > room.energyAvailable) {
+            console.log(`[${room.name}] Need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
             return false;
         }
-
-        // Если в комнате больше 50к минералов, бустим...
-        const energyCount = [room.terminal, room.storage].reduce((mineralsCount, structure) => {
-            return mineralsCount + (structure ? structure.store.getUsedCapacity(RESOURCE_ENERGY) : 0)
-        }, 0);
 
         const boost = room.hasHostiles ? "XLH2O" : false; // Boost repair and build
         const role = 'upgrader';
         const name = 'Upgrader' + Game.time;
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(parts, name, {memory: {role, boost}, energyStructures });
+        spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, boost}, energyStructures});
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
-
         return false;
     },
     upgrade: function(room) {
@@ -88,17 +78,19 @@ const roleUpgrader = {
 
         // Если есть ресурсы
 	    if(!creep.memory.harvesting) {
-	        if (creep.memory.link_id) {
-	            taskStructure.upgradeController(creep);
-	            return;
-	        }
-
-            if (creep.room.memory.need_maintain_controller) {
+            // С линком апгрейдер прикован к нему - сразу льёт в контроллер. Maintain-таск
+            // (downgrade close) тоже приоритетнее всех остальных задач.
+            if (creep.memory.link_id || creep.room.memory.need_maintain_controller) {
                 taskStructure.upgradeController(creep);
                 return;
             }
 
-            // Ищем структуры, которые необходимо достроить
+            // На bootstrap'е первый и единственный апгрейдер должен прежде всего достроить
+            // контейнер у source - без него миннер 550e (RCL 2) бесполезен (дропает энергию
+            // на землю), да и сам апгрейдер потом возьмёт из контейнера, а не будет гонять
+            // через всю комнату к source. buildClosest стоит раньше upgradeController, так
+            // что контейнер достроится прежде контроллера. Заполняет спавн в это время миннер
+            // (через self-deliver в miner.run) и чарджер (через pickup дропов).
             if (taskStructure.buildClosest(creep) == OK) return;
 
 	        // Если чиним структуру, то пытаемся её дочинить
@@ -133,6 +125,17 @@ const roleUpgrader = {
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE ], RESOURCE_ENERGY) == OK) return;
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_ENERGY) == OK) return;
             if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY ], RESOURCE_ENERGY) == OK) return;
+            // Bootstrap-fallback: на RCL 1-3 нет storage/terminal/factory. Контейнер у source -
+            // единственный накопитель энергии (миннер на 550e дропает в него без CARRY).
+            if (taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER], RESOURCE_ENERGY) == OK) return;
+            // На RCL 1 нет вообще ничего: миннер с CARRY несёт всё в спавн, дропов/контейнеров
+            // у source нет. У апгрейдера во всех конфигах есть WORK - добывает сам.
+            if (creep.getActiveBodyparts(WORK) > 0) {
+                const source = creep.pos.findClosestByPath(FIND_SOURCES_ACTIVE);
+                if (source) {
+                    if (taskResource.harvestTarget(creep, source) == OK) return;
+                }
+            }
         }
 	}
 };

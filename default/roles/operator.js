@@ -28,7 +28,7 @@ const roleOperator = {
         if (op && (op.cooldown || 0) === 0) {
             const r = pc.usePower(PWR_GENERATE_OPS);
             if (r !== OK && r !== ERR_TIRED) {
-                console.log(`[${room.name}][operator] usePower(GENERATE_OPS) err ${r}`);
+                console.log(`[${room.name}][operator] usePower(GENERATE_OPS) err ${r} ${r.toStringStatus()}`);
             }
         }
 

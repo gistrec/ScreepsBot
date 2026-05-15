@@ -39,12 +39,15 @@ function buildHeavyRoomVisuals(room) {
 
     const enemy_towers = room.find(FIND_HOSTILE_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_TOWER});
     for (const tower of enemy_towers) {
+        // Урон tower'и считается по Chebyshev distance (`max(|dx|,|dy|)`), поэтому
+        // зона «дистанция ≤ r» - квадрат 2r×2r, а не круг. Раньше тут были v.circle -
+        // на углах квадрата они врали: точки (±r, ±r) попадали "за границей" круга, но
+        // по факту получали полный урон зоны r. Рисуем концентрические квадраты.
         let radius = 5;
         let damage = 600;
 
         while (radius <= 20) {
-            v.circle(tower.pos, {
-                radius: radius,
+            v.rect(tower.pos.x - radius - 0.5, tower.pos.y - radius - 0.5, radius * 2 + 1, radius * 2 + 1, {
                 fill: 'transparent',
                 stroke: 'red',
                 lineStyle: 'dotted',

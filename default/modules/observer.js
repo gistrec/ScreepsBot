@@ -44,10 +44,11 @@ const get_observers = exports.get_observers = function() {
 }
 
 // Power bank registry. Каждое сканирование пишет/обновляет/удаляет запись по id банка.
-// Поля: { id, roomName, x, y, hits, amount, decayAt, status, squad }.
+// Поля: { id, roomName, x, y, hits, amount, decayAt, status, squad, contested, home_room }.
 // status переключается из observer'a и powerBank-модуля:
 //   'pending'   - банк только найден, ещё никого не послали
 //   'attacking' - squad назначен и едет/бьёт
+//   'stealing'  - банк бьёт кто-то другой, ждём смерти чтобы подобрать дроп
 //   'looting'   - банк уничтожен, дроп ждёт carrier'ов
 //   'done'      - всё забрали (cleanup'ится)
 exports.process = function() {
@@ -58,10 +59,17 @@ exports.process = function() {
     const room = Game.rooms[room_name];
     if (room) {
         const power_bank = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_POWER_BANK}).shift();
+        // Враги с ATTACK-частями = кто-то уже ломает банк. Source Keeper'ов на хайвеях нет,
+        // Invader'ы структуры не трогают - значит это другой игрок и наш сквад туда не нужен.
+        const hostileAttackers = power_bank
+            ? room.find(FIND_HOSTILE_CREEPS, {filter: c => c.body.some(p => p.type === ATTACK)})
+            : [];
         if (power_bank) {
             const existing = Memory.power_banks[power_bank.id];
+            const isContested = hostileAttackers.length > 0;
             if (!existing) {
-                console.log(`[${room_name}] PowerBank found: ${power_bank.power} power, ${power_bank.hits} HP, ${power_bank.ticksToDecay} ttl.`);
+                const note = isContested ? ` [contested by ${hostileAttackers.length} hostile attackers]` : '';
+                console.log(`[${room_name}] PowerBank found: ${power_bank.power} power, ${power_bank.hits} HP, ${power_bank.ticksToDecay} ttl${note}.`);
                 Memory.power_banks[power_bank.id] = {
                     id:       power_bank.id,
                     roomName: room_name,
@@ -72,20 +80,36 @@ exports.process = function() {
                     decayAt:  Game.time + power_bank.ticksToDecay,
                     status:   'pending',
                     squad:    [],
+                    contested: isContested,
                 };
             } else {
                 // Refresh live данных. status/squad не трогаем - ими владеет powerBank-модуль.
                 existing.hits     = power_bank.hits;
                 existing.decayAt  = Game.time + power_bank.ticksToDecay;
+                // Помечаем contested только пока 'pending' - если сквад уже в пути ('attacking'),
+                // вмешиваться поздно, доводим бой до конца. 'stealing' уже помечен.
+                if (!existing.contested && isContested && existing.status === 'pending') {
+                    existing.contested = true;
+                    console.log(`[${room_name}] PowerBank ${power_bank.id} contested by ${hostileAttackers.length} hostile attackers.`);
+                }
             }
         } else {
-            // Банка в комнате больше нет. Запись с status=='looting' оставляем (carrier'ы
-            // ещё едут забирать дроп), остальные удаляем.
+            // Банка в комнате больше нет.
             for (const id in Memory.power_banks) {
-                if (Memory.power_banks[id].roomName == room_name
-                 && Memory.power_banks[id].status != 'looting') {
-                    delete Memory.power_banks[id];
+                const entry = Memory.power_banks[id];
+                if (entry.roomName != room_name) continue;
+                if (entry.status == 'looting') continue;
+                // 'attacking'/'stealing' с заданным home_room: банк скорее всего убит -
+                // переводим в 'looting' чтобы carrier'ы вышли (powerBank.process спавнит
+                // их идемпотентно). Если дропа в комнате не окажется - carrier'ы сами
+                // recycle'ятся. Раньше 'attacking'-запись просто удалялась если observer
+                // успевал раньше process() детектить смерть - и наш дроп тоже терялся.
+                if (entry.home_room && (entry.status == 'attacking' || entry.status == 'stealing')) {
+                    console.log(`[${room_name}] Bank ${id} disappeared during ${entry.status} - switching to loot.`);
+                    entry.status = 'looting';
+                    continue;
                 }
+                delete Memory.power_banks[id];
             }
         }
     }

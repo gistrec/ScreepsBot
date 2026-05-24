@@ -68,10 +68,25 @@ exports.process = function() {
         const bank = Memory.power_banks[bankId];
 
         if (bank.status === 'pending') {
+            if (bank.contested) {
+                // Контест: банк бьёт другой игрок. Свой сквад не шлём - воровать дешевле
+                // и безопаснее. Готовим home_room для будущих carrier'ов; реальный спавн -
+                // когда observer переведёт запись в 'looting' (см. spawnCarriers ниже).
+                if (tryScheduleSteal(bank)) {
+                    // Stealing не занимает active слот - там нет attacker/healer, только
+                    // carrier'ы, и они независимы от power_bank_max_active.
+                }
+                continue;
+            }
             if (activeCount >= maxActive) continue;
             // tryAllocateSquad возвращает true при успехе - инкрементим локальный счётчик,
             // иначе при нескольких pending банках в одном проходе все получили бы сквад.
             if (tryAllocateSquad(bank)) activeCount++;
+
+        } else if (bank.status === 'stealing') {
+            // Ждём пока observer переведёт в 'looting' при исчезновении банка из комнаты.
+            // Если банк просто decay'нется без убийства - cleanup ниже (decayAt < Game.time)
+            // или общий 100-тиковый sweep удалит запись и carrier'ов мы не пошлём.
 
         } else if (bank.status === 'attacking') {
             // Если все creeps squad'а мертвы - реабилитируем как pending или drop.
@@ -101,6 +116,11 @@ exports.process = function() {
             }
 
         } else if (bank.status === 'looting') {
+            // spawnCarriers идемпотентен - страховка для пути stealing→looting (observer
+            // переводит статус, но carrier'ов не спавнит) и для случая если attacking→looting
+            // переход в observer'e (банк убили на скане, process() детект не успел).
+            spawnCarriers(bank);
+
             // Карьеры заберут drop. Когда комнату посетим (через carrier'ов) и видим что
             // ни drop ни ruin не остались - выставляем done.
             const room = Game.rooms[bank.roomName];
@@ -123,6 +143,26 @@ exports.process = function() {
     }
 };
 
+// Ручной override home-комнаты для конкретной target-room (через консоль:
+// `Memory.power_bank_home_for_room = { 'W10S40': 'W9S39' }`). Если задан, проверяем
+// тот же filter и route maxDistance что и для auto-pick - override не обходит базовые
+// требования (энергия/спавн/проходимость), иначе спавн фейлится каждый тик.
+function pickHome(bank, opts) {
+    const override = (Memory.power_bank_home_for_room || {})[bank.roomName];
+    if (override) {
+        const home = Game.rooms[override];
+        if (!home || !home.controller || !home.controller.my) return null;
+        if (opts.filter && !opts.filter(home)) return null;
+        if (opts.maxDistance !== undefined) {
+            const route = Game.map.findRoute(home.name, bank.roomName);
+            if (route === ERR_NO_PATH) return null;
+            if (route.length > opts.maxDistance) return null;
+        }
+        return home;
+    }
+    return utils.findNearestOwnRoom(bank.roomName, opts);
+}
+
 // Возвращает true если сквад заспавнен в этом проходе - вызывающий инкрементит
 // activeCount для соблюдения power_bank_max_active при нескольких pending банках.
 function tryAllocateSquad(bank) {
@@ -132,20 +172,14 @@ function tryAllocateSquad(bank) {
     if (bank.amount < minAmount) return false;
     if (bank.decayAt - Game.time < 4000) return false;
 
-    const candidates = _.filter(Game.rooms, r =>
-        r.controller && r.controller.my
-        && r.controller.level >= 8
-        && r.energyCapacityAvailable >= bodyCost(HEALER_BODY)
-        && !!utils.findFreeSpawn(r, {primaryOnly: false, requireActive: false})
-    );
-    if (candidates.length === 0) return false;
-
-    candidates.sort((a, b) =>
-        Game.map.getRoomLinearDistance(a.name, bank.roomName)
-      - Game.map.getRoomLinearDistance(b.name, bank.roomName)
-    );
-    const home = candidates[0];
-    if (Game.map.getRoomLinearDistance(home.name, bank.roomName) > maxDistance) return false;
+    const home = pickHome(bank, {
+        filter: r =>
+            r.controller.level >= 8
+            && r.energyCapacityAvailable >= bodyCost(HEALER_BODY)
+            && !!utils.findFreeSpawn(r, {primaryOnly: false, requireActive: false}),
+        maxDistance,
+    });
+    if (!home) return false;
 
     if (home.energyAvailable < bodyCost(ATTACKER_BODY)) return false;
 
@@ -208,6 +242,10 @@ function trySpawnHealer(bank) {
 }
 
 function spawnCarriers(bank) {
+    // Идемпотентность: для path attacking→looting carrier'ы уже заспавнены до перехода;
+    // для path stealing→looting через observer повторно зовётся из 'looting' ветки process().
+    if (bank.carriers && bank.carriers.length > 0) return;
+
     const count = Memory.power_bank_carriers_per_kill || 3;
     const home = Game.rooms[bank.home_room];
     if (!home) return;
@@ -235,6 +273,29 @@ function spawnCarriers(bank) {
             break;
         }
     }
+}
+
+// Контест-флоу: вместо сквада только готовим home_room под будущих carrier'ов.
+// Требования к home мягче, чем у attack-сквада: RCL/labs не нужны (без boost'а),
+// только энергия на CARRIER_BODY и свободный спавн. Дистанция короче дефолтной
+// атаковой (3 vs 4) - carrier'ы без защиты, дальше слишком рискованно.
+function tryScheduleSteal(bank) {
+    const stealMaxDistance = Memory.power_bank_steal_max_distance || 3;
+    const home = pickHome(bank, {
+        filter: r =>
+            r.energyCapacityAvailable >= bodyCost(CARRIER_BODY)
+            && !!utils.findFreeSpawn(r, {primaryOnly: false, requireActive: false}),
+        maxDistance: stealMaxDistance,
+    });
+    if (!home) {
+        console.log(`[powerBank] Bank ${bank.id} contested, no own room within steal range (${stealMaxDistance}) - dropping.`);
+        delete Memory.power_banks[bank.id];
+        return false;
+    }
+    bank.home_room = home.name;
+    bank.status = 'stealing';
+    console.log(`[powerBank] Bank ${bank.id} contested, scheduled loot from ${home.name}.`);
+    return true;
 }
 
 exports.process = profiler.registerFN(exports.process, "powerBank.process");

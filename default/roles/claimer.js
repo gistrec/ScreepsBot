@@ -28,7 +28,9 @@ const roleClaimer = {
         const expand = Game.flags['Expand'];
         if (!expand) return true;
 
-        const room = utils.findNearestOwnRoom(expand.pos.roomName, configurations[0].energy);
+        const room = utils.findNearestOwnRoom(expand.pos.roomName, {
+            filter: r => r.energyCapacityAvailable >= configurations[0].energy,
+        });
         if (!room) {
             console.log(`[EXPANSION] No own room with energyCapacity >= ${configurations[0].energy} for claimer`);
             return true;

@@ -33,23 +33,41 @@ exports.getAvailableCreepCount = function(configurations, room) {
     return configuration["max_count"];
 }
 
-// Свою комнату с energyCapacityAvailable >= requiredCapacity, ближайшую к target
-// по linear distance. Возвращает null если таких нет. Используется expansion-ролями
-// (claimer/scout/remoteUpgrader) для выбора спавн-комнаты.
-exports.findNearestOwnRoom = function(targetRoomName, requiredCapacity) {
+// Свою комнату, ближайшую к target по фактическому маршруту через findRoute.
+// Кандидаты сортируются по linear distance (lower bound для route.length), затем
+// для каждого валидируется существование пути - linear distance не отражает реальной
+// проходимости (terrain/недостижимые сектора). Используется expansion-ролями
+// (claimer/scout/remoteUpgrader) и powerBank-сквадом для выбора спавн-комнаты.
+// opts:
+//   filter      - доп. предикат на комнату (room => bool); RCL/energy/spawn-чек делает caller.
+//   maxDistance - максимум route.length; кандидаты с linearDistance > maxDistance
+//                 отсекаются сразу (linear - lower bound, дальше искать смысла нет).
+exports.findNearestOwnRoom = function(targetRoomName, {filter, maxDistance} = {}) {
     const candidates = [];
     for (const name in Game.rooms) {
         const r = Game.rooms[name];
         if (!r.controller || !r.controller.my) continue;
-        if (r.energyCapacityAvailable < requiredCapacity) continue;
+        if (filter && !filter(r)) continue;
         candidates.push(r);
     }
     if (candidates.length === 0) return null;
+
     candidates.sort((a, b) =>
         Game.map.getRoomLinearDistance(a.name, targetRoomName)
       - Game.map.getRoomLinearDistance(b.name, targetRoomName)
     );
-    return candidates[0];
+
+    for (const candidate of candidates) {
+        if (maxDistance !== undefined
+            && Game.map.getRoomLinearDistance(candidate.name, targetRoomName) > maxDistance) {
+            break;
+        }
+        const route = Game.map.findRoute(candidate.name, targetRoomName);
+        if (route === ERR_NO_PATH) continue;
+        if (maxDistance !== undefined && route.length > maxDistance) continue;
+        return candidate;
+    }
+    return null;
 }
 
 // TTL, при котором майнера пора заменять: реальное время спавна нового тела + запас на дорогу.

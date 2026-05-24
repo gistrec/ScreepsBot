@@ -178,15 +178,16 @@ exports.checkBoost = function(creep) {
     const labEnergy   = lab.store.getUsedCapacity(RESOURCE_ENERGY);    // Количество энергии в лаборатории
     const creepEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY);  // Количество энергии в крипе
     if (labEnergy < totalEnergy) {
-        creep.say("⚡Fill lab")
-
         // Zero-CARRY (powerBank attacker/healer) сам ничего не возит - делегируем чарджеру.
         // У крипа без CARRY-частей store.getCapacity() возвращает null, не 0 - сверяемся
-        // по телу напрямую.
+        // по телу напрямую. Сам крип в это время простаивает у лабы и ждёт чарджера.
         if (!creep.body.some(p => p.type === CARRY)) {
+            creep.say("⏳Wait fill");
             chargerFillLab(creep, lab, RESOURCE_ENERGY, totalEnergy);
             return OK;
         }
+
+        creep.say("⚡Fill lab")
 
         // Перед тем как начать заполнять лабораторию энергией, нужно выкинуть все лишние ресурсы из трюма.
         // Нужно для того, чтобы как можно быстрее заполнить лабораторию.
@@ -254,13 +255,14 @@ exports.checkBoost = function(creep) {
     const labResources   = lab.store.getUsedCapacity(resourceType);   // Количество минералов в лаборатории
     const creepResources = creep.store.getUsedCapacity(resourceType); // Количество минералов в крипе
     if (labResources < totalResources) {
-        creep.say("💎Fill lab")
-
-        // Zero-CARRY: тоже делегируем чарджеру.
+        // Zero-CARRY: тоже делегируем чарджеру, сам крип ждёт у лабы.
         if (!creep.body.some(p => p.type === CARRY)) {
+            creep.say("⏳Wait fill");
             chargerFillLab(creep, lab, resourceType, totalResources);
             return OK;
         }
+
+        creep.say("💎Fill lab")
 
         // Перед тем как начать заполнять лабораторию энергией, нужно выкинуть все лишние ресурсы из трюма.
         // Нужно для того, чтобы как можно быстрее заполнить лабораторию.

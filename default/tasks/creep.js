@@ -80,18 +80,37 @@ exports.checkRecycling = function(creep) {
             const found = creep.memory.spawn_id;
             if (found) return found;
 
-            // Пытаемся найти ближайщий спаун
+            // Пытаемся найти ближайщий спаун в текущей комнате
             const spawn = creep.pos.findClosestByRange(FIND_MY_SPAWNS);
             if (spawn) {
                 creep.memory.spawn_id = spawn.id;
                 return spawn.id;
             }
 
-            // Едем к дефолтному спауну
-            console.log(`[Recycling] Can't find spawn for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}`);
-            creep.memory.spawn_id = Game.spawns["Main"].id;
-            return creep.memory.spawn_id;
+            // Креп вне owned-room (powerBank-сквад, scout/claimer и т.п.) - идём в свою
+            // home/spawn-room. Раньше тут стоял хардкод Game.spawns["Main"], спавна с таким
+            // именем не существует - падало с TypeError на .id.
+            const homeRoomName = creep.memory.home_room || creep.memory.spawn_room;
+            if (homeRoomName) {
+                const home = Game.rooms[homeRoomName];
+                const homeSpawn = home && home.find(FIND_MY_SPAWNS)[0];
+                if (homeSpawn) {
+                    creep.memory.spawn_id = homeSpawn.id;
+                    return homeSpawn.id;
+                }
+            }
+
+            // Последний fallback - любой свой спавн. Если совсем нет - креп умрёт от TTL.
+            const anySpawn = Object.values(Game.spawns)[0];
+            if (anySpawn) {
+                console.log(`[Recycling] No home spawn for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}, fallback to ${anySpawn.name}`);
+                creep.memory.spawn_id = anySpawn.id;
+                return anySpawn.id;
+            }
+            console.log(`[Recycling] No spawns available for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}`);
+            return null;
         })();
+        if (!spawn_id) return;
         const spawn = Game.getObjectById(spawn_id);
         if (!spawn) {
             creep.say("Error Spawn");

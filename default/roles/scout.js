@@ -20,7 +20,9 @@ const roleClaimer = {
         const expand = Game.flags['Expand'];
         if (!expand) return true;
 
-        const room = utils.findNearestOwnRoom(expand.pos.roomName, configurations[0].energy);
+        const room = utils.findNearestOwnRoom(expand.pos.roomName, {
+            filter: r => r.energyCapacityAvailable >= configurations[0].energy,
+        });
         if (!room) return true;
 
         const spawn = utils.findFreeSpawn(room, {primaryOnly: false, requireActive: false});

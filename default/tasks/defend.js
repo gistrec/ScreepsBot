@@ -51,9 +51,10 @@ exports.checkStatus = function(room) {
         .filter(s => s.hits != s.hitsMax);
     // rampart_super_damaged как fail-safe срабатывал на статичных низких рампартах: один
     // случайный враг + давно недоремонтированные барьеры = впустую сожжённый safe mode.
-    // Требуем чтобы (а) урон шёл прямо сейчас (drop > 0) и (б) врагов было >=2 - один
-    // проходящий scout/Invader не должен триггерить.
-    const rampartSuperDamagedTrigger = rampartSuperDamaged.length && maxRampartDrop > 0 && enemyCreeps.length >= 2;
+    // Требуем чтобы (а) урон шёл прямо сейчас strictly выше decay'я (один из 72+ рампартов
+    // батчево теряет 300 HP каждые RAMPART_DECAY_TIME, drop > 0 почти всегда истинно) и
+    // (б) врагов было >=2 - один проходящий scout/Invader не должен триггерить.
+    const rampartSuperDamagedTrigger = rampartSuperDamaged.length && maxRampartDrop > RAMPART_DECAY_AMOUNT && enemyCreeps.length >= 2;
 
     // Включаем SafeMode, если барьер или спаун повреждены.
     // Проверка на наличие врагов добавлена чтобы барьер нечайно сам не регрессировал + при апгрейде контроллера.

@@ -223,5 +223,77 @@ exports.process = function() {
     }
 }
 
+// Поиск лучшего anchor'а для базы в комнате, когда полностью свободного 13×13
+// квадрата нет (computeClearRadius даст radius < 6). Сканирует все валидные
+// центры, для каждого считает:
+//   - schemeConflicts: walls/edges, попавшие на клетки СХЕМЫ (где что-то строится)
+//   - totalConflicts:  все walls/edges в 13×13 (как считает visualization.js)
+// Возвращает топ-N по schemeConflicts (это реальные блокеры для постройки;
+// стены на schema-`_` клетках безвредны).
+exports.findBestAnchor = function(roomName, n = 5) {
+    const buildModule = require('./build');
+    const schemes = buildModule.schemes;
+    const HALF = 6;
+    const SIZE = 13;
+
+    // Mask клеток схемы: 1 если в любой из schemes[1..8] на (dy,dx) есть структура.
+    const mask = new Uint8Array(SIZE * SIZE);
+    for (let lvl = 1; lvl <= 8; lvl++) {
+        const scheme = schemes[lvl];
+        if (!scheme) continue;
+        for (let dy = 0; dy < SIZE; dy++) {
+            for (let dx = 0; dx < SIZE; dx++) {
+                if (scheme[dy][dx]) mask[dy * SIZE + dx] = 1;
+            }
+        }
+    }
+
+    const terrain = Game.map.getRoomTerrain(roomName);
+    const candidates = [];
+    for (let cy = HALF; cy <= 49 - HALF; cy++) {
+        for (let cx = HALF; cx <= 49 - HALF; cx++) {
+            const xMin = cx - HALF;
+            const yMin = cy - HALF;
+            let scheme_walls = 0, scheme_edges = 0;
+            let total_walls = 0, total_edges = 0;
+            for (let dy = 0; dy < SIZE; dy++) {
+                for (let dx = 0; dx < SIZE; dx++) {
+                    const wx = xMin + dx;
+                    const wy = yMin + dy;
+                    const onMask = mask[dy * SIZE + dx] === 1;
+                    const isEdge = (wx < 2 || wx > 47 || wy < 2 || wy > 47);
+                    if (isEdge) {
+                        total_edges++;
+                        if (onMask) scheme_edges++;
+                        continue;
+                    }
+                    if (terrain.get(wx, wy) & TERRAIN_MASK_WALL) {
+                        total_walls++;
+                        if (onMask) scheme_walls++;
+                    }
+                }
+            }
+            candidates.push({
+                x: cx, y: cy,
+                schemeConflicts: scheme_walls + scheme_edges,
+                totalConflicts:  total_walls + total_edges,
+                walls: scheme_walls,
+                edges: scheme_edges,
+            });
+        }
+    }
+
+    candidates.sort((a, b) =>
+        a.schemeConflicts - b.schemeConflicts
+        || a.totalConflicts - b.totalConflicts
+    );
+    const top = candidates.slice(0, n);
+    console.log(`[${roomName}] Top ${top.length} base anchors (sorted by schemeConflicts asc):`);
+    for (const c of top) {
+        console.log(`  center=(${c.x},${c.y}) spawn=(${c.x + 2},${c.y}) | scheme=${c.schemeConflicts} (walls=${c.walls}, edges=${c.edges}) | total=${c.totalConflicts}`);
+    }
+    return top;
+};
+
 exports.surveyRoom = profiler.registerFN(exports.surveyRoom, "roomSurvey.surveyRoom");
 exports.process    = profiler.registerFN(exports.process,    "roomSurvey.process");

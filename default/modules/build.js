@@ -310,7 +310,21 @@ exports.buildMissingStructures = function(room) {
                 const structuresAtPos = pos.lookFor(LOOK_STRUCTURES);
                 if (structuresAtPos.length === 0
                         || structuresAtPos.every(s => s.structureType == STRUCTURE_RAMPART)) {
-                    room.createConstructionSite(pos, structure);
+                    if (structure === STRUCTURE_SPAWN) {
+                        // Имена спавнов фиксированы: primary=`{roomName}`, D - слева от primary,
+                        // E - снизу. Без явного имени Screeps авто-генерирует "Spawn1/Spawn2",
+                        // и console-команды вида Game.spawns['W12S37D'] перестают работать.
+                        // Primary B в схеме совпадает с уже стоящим спавном (claimer создаёт его
+                        // с именем room.name) - structuresAtPos для primary не пуст, сюда не дойдём.
+                        const dy = y - spawn_offset_y;
+                        const dx = x - spawn_offset_x;
+                        const spawnName = dy > 0 ? `${room.name}E`
+                                        : dx < 0 ? `${room.name}D`
+                                                 : room.name;
+                        room.createConstructionSite(pos, structure, spawnName);
+                    } else {
+                        room.createConstructionSite(pos, structure);
+                    }
                 }
             }
         }

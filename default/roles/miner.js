@@ -178,10 +178,17 @@ const roleMiner = {
             return;
         }
 
-        // Основная задача: добывать ресурсы. Если source пуст (cooldown) - используем
-        // intent-слот на upgradeController вместо холостого creep.harvest().
+        // Основная задача: добывать ресурсы. Не харвестим если в трюме нет места под полный
+        // output одного тика (5 WORK = 10e/tick) - creep.harvest() переливает в drop при
+        // партиальной нехватке (freeCap=5, harvest 10 → 5 в трюм + 5 на пол). isFull выше
+        // ловит только freeCap==0; partial overflow возникает после tryUpgradeController
+        // (drain 5 per tick), который оставляет miner на 95/100.
+        // Если source пуст ИЛИ overflow риск - используем intent-слот на upgradeController
+        // вместо харвеста; tryUpgradeController также drain'ит трюм, освобождая место.
         const target = sources.get(creep);
-        if (target && target.energy > 0) {
+        const harvestPerTick = creep.body.filter(p => p.type === WORK).length * HARVEST_POWER;
+        const canFitHarvest = creep.store.getFreeCapacity(RESOURCE_ENERGY) >= harvestPerTick;
+        if (target && target.energy > 0 && canFitHarvest) {
             taskResource.harvestTarget(creep, target);
         } else {
             tryUpgradeController(creep);

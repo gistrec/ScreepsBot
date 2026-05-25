@@ -143,51 +143,48 @@ const roleMiner = {
         const carryCap = creep.store.getCapacity(RESOURCE_ENERGY) || 0;
         const isFull = carryCap > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
 
-        // Pre-harvest разгрузка: если трюм полон и есть куда положить - transfer, харвест
-        // отложим на следующий тик (один action на тик). Без этого creep.harvest() при полном
-        // трюме скидывает overflow на пол - Screeps "auto-overflow в контейнер" работает только
-        // когда контейнер РЯДОМ (range 1), а майнер стоит ON контейнере (same tile, range 0),
-        // и overflow не срабатывает.
+        // Полный трюм - перед харвестом разгружаемся, иначе creep.harvest() сольёт overflow
+        // на пол. Screeps "auto-overflow в контейнер" работает только когда контейнер РЯДОМ
+        // (range 1), а майнер стоит ON контейнере (same tile) - там overflow не срабатывает.
         if (isFull) {
+            // 1. Контейнер под крипом со свободным местом.
             if (containerUsable) {
                 creep.transfer(container, RESOURCE_ENERGY);
                 return;
             }
+            // 2. Линк со свободным местом.
             if (link && !linkFull) {
                 taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
                 return;
             }
-            // Ни контейнера под крипом, ни свободного линка - fall through к bootstrap-логике
-            // ниже (drop/spawn/extension) или к харвесту с дропом (как fallback).
-        }
-
-        // Если есть CARRY и ни линка, ни контейнера под нами нет:
-        // - В established комнате (есть storage) просто дропаем у source - чарджер заберёт,
-        //   тащиться через всю базу в спавн неоправданно.
-        // - В bootstrap-комнате (нет storage, RCL<4) сами доставляем в спавн/extension,
-        //   потому что иначе спавн остаётся пустым: 250e ушло на миннера, чарджеру неоткуда.
-        if (isFull && linkFull && !containerUsable) {
-            if (creep.room.storage) {
+            // 3. Bootstrap-комната (нет storage): сами носим в spawn/extension. Иначе
+            //    спавн остаётся пустым - 250e ушло на миннера, чарджеру неоткуда.
+            //    Если spawn/extension тоже забиты - вынужденный drop как fallback.
+            if (!creep.room.storage) {
+                if (taskResource.fillClosestStructure(creep, STRUCTURE_SPAWN) == OK) return;
+                if (taskResource.fillClosestStructure(creep, STRUCTURE_EXTENSION) == OK) return;
                 creep.drop(RESOURCE_ENERGY);
                 return;
             }
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_SPAWN) == OK) return;
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_EXTENSION) == OK) return;
-            creep.drop(RESOURCE_ENERGY);
-            return;
-        }
-
-        // Если трюм полон, но мы дошли сюда (containerUsable=false и linkFull=true одновременно
-        // не сложилось, но и dump не получился) - не майним, чтобы energy не упала на пол.
-        if (isFull) {
+            // 4. Established (есть storage), контейнер/линк забиты - НЕ МАЙНИМ и НЕ ДРОПАЕМ.
+            //    Source регенерируется бесплатно, пусть ждёт пока чарджер вычерпает контейнер.
+            //    Раньше делали creep.drop() ("чарджер подберёт"), но при забитом контейнере
+            //    чарджер и так не справляется - дроп просто копился на полу.
+            //    Пока ждём - тратим трюм на upgradeController, если контроллер в range 3
+            //    от контейнера (controller_id выставлен в sources.js).
+            if (tryUpgradeController(creep)) return;
             creep.say('💤Full');
             return;
         }
 
-        // Основная задача:
-        // * Добывать ресурсы
+        // Основная задача: добывать ресурсы. Если source пуст (cooldown) - используем
+        // intent-слот на upgradeController вместо холостого creep.harvest().
         const target = sources.get(creep);
-        taskResource.harvestTarget(creep, target);
+        if (target && target.energy > 0) {
+            taskResource.harvestTarget(creep, target);
+        } else {
+            tryUpgradeController(creep);
+        }
 
         // Передаем ресурсы линку.
         if (link && !creep.store.getFreeCapacity(RESOURCE_ENERGY) && creep.store.getCapacity(RESOURCE_ENERGY) && link.store.getFreeCapacity(RESOURCE_ENERGY)) {
@@ -195,6 +192,20 @@ const roleMiner = {
         }
 	}
 };
+
+// Опциональный апгрейд контроллера - вызывается из miner.run когда source в cooldown
+// или контейнер/линк забиты. Возвращает true если апгрейд выполнен (intent-слот занят).
+function tryUpgradeController(creep) {
+    if (!creep.memory.controller_id) return false;
+    if (creep.store.getUsedCapacity(RESOURCE_ENERGY) <= 0) return false;
+    const controller = Game.getObjectById(creep.memory.controller_id);
+    if (!controller) return false;
+    if (creep.upgradeController(controller) === OK) {
+        creep.say('⬆️');
+        return true;
+    }
+    return false;
+}
 
 
 module.exports = roleMiner;

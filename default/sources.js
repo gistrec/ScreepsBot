@@ -70,6 +70,21 @@ exports.get = function(creep, force = false) {
         }
     }
 
+    // Контроллер, до которого можно дотянуться upgradeController'ом не двигаясь от контейнера.
+    // upgradeController требует range 3. Майнер стоит ON контейнере → проверяем дистанцию
+    // от контейнера, не от источника. Идея: пока source в cooldown или контейнер забит,
+    // майнер не сидит без дела, а апгрейдит контроллер своими WORK-частями.
+    if (creep.memory.controller_id === undefined) {
+        const controller = creep.room.controller;
+        const container = creep.memory.container_id ? Game.getObjectById(creep.memory.container_id) : null;
+        if (controller && controller.my && container && container.pos.inRangeTo(controller, 3)) {
+            creep.memory.controller_id = controller.id;
+            console.log(`[${creep.room.name}] Miner ${creep.name} can upgrade controller (container range ${container.pos.getRangeTo(controller)} from controller)`);
+        } else {
+            creep.memory.controller_id = null;
+        }
+    }
+
     return source;
 }
 

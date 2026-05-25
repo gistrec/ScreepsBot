@@ -143,7 +143,9 @@ visualiseRoom = function(room) {
 
     const expand = Game.flags["Expand"]
     if (expand) {
-        room.visual.rect(expand.pos.x - 6, expand.pos.y - 6, 12, 12, {fill: 'transparent', stroke: 'green', lineStyle: 'dotted', opacity: 0.7});
+        // 13x13 tile-aligned (-0.5 offset, size=13) - то же, что у base preview.
+        // Раньше было 12x12 без offset - off-by-half-tile и не покрывало правую/нижнюю клетку.
+        room.visual.rect(expand.pos.x - 6.5, expand.pos.y - 6.5, 13, 13, {fill: 'transparent', stroke: 'green', lineStyle: 'dotted', opacity: 0.7});
     }
 
     // Нюки - редкие, но timeToLand тикает каждый тик. Дёшево.
@@ -400,24 +402,91 @@ function visualiseRoomSurveyOverlay(room) {
                .text(`r${s.clearRadius}`, cx, cy + 0.3, {color, font: 0.6});
 }
 
-// Стрелки power-bank операций: home_room → комната банка. Цвет по статусу:
-//   attacking - красный (squad едет/бьёт)
-//   looting   - оранжевый (carriers везут power)
-// pending банки без назначенного home_room не рисуются (squad ещё не выделен).
+// Map-визуализация power-bank'ов: рисует все банки в Memory с HP/DPS/tickToDeath +
+// стрелки активных операций (home_room → комната банка).
+// Цвет:
+//   pending           - зелёный (свободен, можем послать сквад)
+//   stealing          - оранжевый (контест, ждём смерти чтобы подобрать)
+//   attacking         - красный (наш squad едет/бьёт)
+//   looting           - жёлтый (carriers везут power)
 function visualisePowerBankFlows() {
     if (!Memory.power_banks) return;
 
     for (const id in Memory.power_banks) {
         const bank = Memory.power_banks[id];
-        if (!bank.home_room) continue;
-        if (bank.status !== 'attacking' && bank.status !== 'looting') continue;
 
-        const color = bank.status === 'attacking' ? '#ff4444' : '#ffaa00';
-        const from = new RoomPosition(25, 25, bank.home_room);
-        const to   = new RoomPosition(bank.x, bank.y, bank.roomName);
-        Game.map.visual.line(from, to, {color, width: 0.8, opacity: 0.7, lineStyle: 'dashed'});
-        Game.map.visual.text(`⚡${bank.amount}`, new RoomPosition(bank.x, Math.max(0, bank.y - 4), bank.roomName), {color, fontSize: 5, align: 'center'});
-        Game.map.visual.text(bank.status, new RoomPosition(bank.x, Math.min(49, bank.y + 4), bank.roomName), {color, fontSize: 4, align: 'center'});
+        const color = bank.status === 'attacking' ? '#ff4444'
+                    : bank.status === 'looting'   ? '#ffaa00'
+                    : bank.status === 'stealing'  ? '#ff8844'
+                    : '#88ff88';
+
+        const dps           = bank.dps || 0;
+        const ticksToKill   = dps > 0 ? Math.ceil(bank.hits / dps) : null;
+        const ticksToDecay  = Math.max(0, (bank.decayAt || 0) - Game.time);
+        const hpK           = Math.round(bank.hits / 1000);
+
+        // Стек слева-сверху комнаты банка - не перекрывает сам банк, читаемо на zoom-out.
+        // x=1, y=2..; align='left' с базовой позицией = левый край каждой строки.
+        const x = 1;
+        let y = 4;
+        const line = (text, opts) => {
+            Game.map.visual.text(text, new RoomPosition(x, y, bank.roomName), Object.assign({color, align: 'left'}, opts));
+            y += (opts && opts.fontSize ? opts.fontSize : 4) + 1;
+        };
+        line(`⚡ ${bank.amount}`,                                    {fontSize: 6});
+        line(`HP   ${hpK}k`,                                         {fontSize: 4});
+        line(`DPS  ${dps}`,                                          {fontSize: 4});
+        line(ticksToKill !== null ? `kill  ~${ticksToKill}t` : `decay ${ticksToDecay}t`, {fontSize: 4});
+        line(`${bank.status}${bank.contested ? ' ⚔' : ''}`,          {fontSize: 4});
+
+        // Config-блок: значения порогов из Memory + сравнение с фактическими параметрами банка.
+        // ✓/✗ + цвет показывают, прошёл бы банк allocate-фильтр в tryAllocateSquad.
+        const minAmount    = Memory.power_bank_min_amount         || 2000;
+        const minDecayBuf  = Memory.power_bank_min_decay_buffer   || 3000;
+        const maxDist      = Memory.power_bank_max_distance       || 4;
+        const stealMaxDist = Memory.power_bank_steal_max_distance || 3;
+        const amountOk     = bank.amount >= minAmount;
+        const decayOk      = ticksToDecay >= minDecayBuf;
+        const failColor    = '#ff4444';
+        y += 1; // визуальный разделитель
+        line(`amt  ${bank.amount}/${minAmount} ${amountOk ? '✓' : '✗'}`,
+             {fontSize: 4, color: amountOk ? color : failColor});
+        line(`dcy  ${ticksToDecay}/${minDecayBuf} ${decayOk ? '✓' : '✗'}`,
+             {fontSize: 4, color: decayOk ? color : failColor});
+        line(`dist max ${maxDist} (steal ${stealMaxDist})`,
+             {fontSize: 4});
+
+        // Стрелка home_room → bank для активных операций.
+        if (bank.home_room && (bank.status === 'attacking' || bank.status === 'stealing' || bank.status === 'looting')) {
+            const from = new RoomPosition(25, 25, bank.home_room);
+            const to   = new RoomPosition(bank.x, bank.y, bank.roomName);
+            Game.map.visual.line(from, to, {color, width: 0.8, opacity: 0.7, lineStyle: 'dashed'});
+        }
+    }
+}
+
+// Room-визуализация power-bank'ов: детальная статистика прямо в комнате банка. Рендерится
+// только в тики, когда комната видна (observer scan tick или наш крип в комнате).
+function visualisePowerBankRoomStats() {
+    if (!Memory.power_banks) return;
+    for (const id in Memory.power_banks) {
+        const bank = Memory.power_banks[id];
+        const room = Game.rooms[bank.roomName];
+        if (!room) continue;
+
+        const dps          = bank.dps || 0;
+        const hpPct        = Math.round((bank.hits / POWER_BANK_HITS) * 100);
+        const ticksToKill  = dps > 0 ? Math.ceil(bank.hits / dps) : null;
+        const ticksToDecay = Math.max(0, (bank.decayAt || 0) - Game.time);
+
+        const x = bank.x, y = bank.y;
+        const baseOpts = {align: 'center', stroke: '#000', strokeWidth: 0.1};
+        room.visual.text(`${Math.round(bank.hits / 1000)}k HP (${hpPct}%)`, x, y - 1.5,
+                         Object.assign({}, baseOpts, {color: '#ffffff', font: 0.5}));
+        room.visual.text(`DPS ${dps}` + (ticksToKill !== null ? ` • kill ~${ticksToKill}t` : ` • decay ${ticksToDecay}t`),
+                         x, y - 0.9, Object.assign({}, baseOpts, {color: '#ff8888', font: 0.4}));
+        room.visual.text(`${bank.status}${bank.contested ? ' ⚔' : ''}`,
+                         x, y + 1.5, Object.assign({}, baseOpts, {color: '#ffaa44', font: 0.4}));
     }
 }
 
@@ -431,6 +500,7 @@ exports.process = function() {
     }
     visualiseLabFlows();
     visualisePowerBankFlows();
+    visualisePowerBankRoomStats();
     visualiseRoomSurveyMap();
     visualizeBasePreview();
 }

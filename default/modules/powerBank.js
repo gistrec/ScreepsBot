@@ -166,11 +166,12 @@ function pickHome(bank, opts) {
 // Возвращает true если сквад заспавнен в этом проходе - вызывающий инкрементит
 // activeCount для соблюдения power_bank_max_active при нескольких pending банках.
 function tryAllocateSquad(bank) {
-    const minAmount = Memory.power_bank_min_amount || 2000;
-    const maxDistance = Memory.power_bank_max_distance || 4;
+    const minAmount       = Memory.power_bank_min_amount       || 2000;
+    const maxDistance     = Memory.power_bank_max_distance     || 4;
+    const minDecayBuffer  = Memory.power_bank_min_decay_buffer || 3000;
 
     if (bank.amount < minAmount) return false;
-    if (bank.decayAt - Game.time < 4000) return false;
+    if (bank.decayAt - Game.time < minDecayBuffer) return false;
 
     const home = pickHome(bank, {
         filter: r =>

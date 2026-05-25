@@ -81,9 +81,22 @@ exports.process = function() {
                     status:   'pending',
                     squad:    [],
                     contested: isContested,
+                    hitsLastScanTick: Game.time,
+                    dps:      0,
                 };
             } else {
                 // Refresh live данных. status/squad не трогаем - ими владеет powerBank-модуль.
+                // DPS estimate: HP-дельта между сканами (одна комната сканится раз в ~rooms.length
+                // тиков). Используется визуализацией для оценки tickToDeath. Если HP не упало
+                // (никто не бил между сканами) - dps=0.
+                if (existing.hitsLastScanTick !== undefined) {
+                    const deltaHits  = existing.hits - power_bank.hits;
+                    const deltaTicks = Game.time - existing.hitsLastScanTick;
+                    if (deltaTicks > 0) {
+                        existing.dps = deltaHits > 0 ? Math.round(deltaHits / deltaTicks) : 0;
+                    }
+                }
+                existing.hitsLastScanTick = Game.time;
                 existing.hits     = power_bank.hits;
                 existing.decayAt  = Game.time + power_bank.ticksToDecay;
                 // Помечаем contested только пока 'pending' - если сквад уже в пути ('attacking'),

@@ -102,7 +102,15 @@ exports.checkBoost = function(creep) {
         creep.memory.boost = creep.memory.boost_queue.shift();
     }
 
-    if (!creep.memory.boost || creep.spawning) {
+    if (!creep.memory.boost) {
+        return ERR_NOT_FOUND;
+    }
+
+    // Spawning крип с CARRY-частями не может двигаться/таскать сам - ждём окончания спавна.
+    // Zero-CARRY (powerBank attacker/healer) делегирует charger'у, fill можно pre-schedule
+    // пока крип ещё в спавне (50 parts = 150 тиков) - к моменту выхода лаба уже залита,
+    // boost'нется сразу, экономия до 100+ тиков на boost-минерал.
+    if (creep.spawning && creep.body.some(p => p.type === CARRY)) {
         return ERR_NOT_FOUND;
     }
 
@@ -290,7 +298,10 @@ exports.checkBoost = function(creep) {
         return OK;
     }
 
-    // 5. Бустим крипа
+    // 5. Бустим крипа. Для spawning ничего не делаем - креп ещё не у лабы; fill уже
+    // запланирован шагами 2/4, лаба заполнится за время оставшегося спавна.
+    if (creep.spawning) return OK;
+
     const status = lab.boostCreep(creep, partsCount)
     switch (status) {
         case OK:

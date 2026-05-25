@@ -143,6 +143,24 @@ const roleMiner = {
         const carryCap = creep.store.getCapacity(RESOURCE_ENERGY) || 0;
         const isFull = carryCap > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
 
+        // Pre-harvest разгрузка: если трюм полон и есть куда положить - transfer, харвест
+        // отложим на следующий тик (один action на тик). Без этого creep.harvest() при полном
+        // трюме скидывает overflow на пол - Screeps "auto-overflow в контейнер" работает только
+        // когда контейнер РЯДОМ (range 1), а майнер стоит ON контейнере (same tile, range 0),
+        // и overflow не срабатывает.
+        if (isFull) {
+            if (containerUsable) {
+                creep.transfer(container, RESOURCE_ENERGY);
+                return;
+            }
+            if (link && !linkFull) {
+                taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
+                return;
+            }
+            // Ни контейнера под крипом, ни свободного линка - fall through к bootstrap-логике
+            // ниже (drop/spawn/extension) или к харвесту с дропом (как fallback).
+        }
+
         // Если есть CARRY и ни линка, ни контейнера под нами нет:
         // - В established комнате (есть storage) просто дропаем у source - чарджер заберёт,
         //   тащиться через всю базу в спавн неоправданно.
@@ -156,6 +174,13 @@ const roleMiner = {
             if (taskResource.fillClosestStructure(creep, STRUCTURE_SPAWN) == OK) return;
             if (taskResource.fillClosestStructure(creep, STRUCTURE_EXTENSION) == OK) return;
             creep.drop(RESOURCE_ENERGY);
+            return;
+        }
+
+        // Если трюм полон, но мы дошли сюда (containerUsable=false и linkFull=true одновременно
+        // не сложилось, но и dump не получился) - не майним, чтобы energy не упала на пол.
+        if (isFull) {
+            creep.say('💤Full');
             return;
         }
 

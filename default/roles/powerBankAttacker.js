@@ -1,3 +1,48 @@
+// Travel в комнату банка через безопасный маршрут: Game.map.findRoute со
+// штрафом Infinity на чужие owned-комнаты (видимые сейчас + засёрвейенные)
+// плюс ручной Memory.travel_avoid_rooms. Кешируем next-exit на creep.memory._route
+// до перехода в следующую комнату - findRoute стоит ~0.1 CPU, реcompute только
+// при пересечении границы.
+function travelToBankRoom(creep, bankPos) {
+    if (creep.room.name === bankPos.roomName) {
+        creep.moveTo(bankPos, {
+            reusePath: 10,
+            visualizePathStyle: {stroke: '#ff4444', lineStyle: 'dashed'},
+        });
+        return;
+    }
+    const cached = creep.memory._route;
+    if (!cached || cached.in !== creep.room.name || cached.to !== bankPos.roomName) {
+        const route = Game.map.findRoute(creep.room.name, bankPos.roomName, {
+            routeCallback: roomName => {
+                if (roomName === bankPos.roomName) return 1;
+                if (roomName === creep.room.name) return 1;
+                const visible = Game.rooms[roomName];
+                if (visible && visible.controller) {
+                    if (visible.controller.my) return 1;
+                    if (visible.controller.owner) return Infinity;
+                }
+                if (Memory.roomSurvey && Memory.roomSurvey[roomName] && Memory.roomSurvey[roomName].owned
+                    && !(visible && visible.controller && visible.controller.my)) return Infinity;
+                if ((Memory.travel_avoid_rooms || []).includes(roomName)) return Infinity;
+                return 1;
+            },
+        });
+        if (route === ERR_NO_PATH || !route.length) {
+            console.log(`[${creep.name}] No safe route ${creep.room.name} -> ${bankPos.roomName}, fallback direct`);
+            creep.moveTo(bankPos, {reusePath: 10, visualizePathStyle: {stroke: '#ff4444', lineStyle: 'dashed'}});
+            return;
+        }
+        creep.memory._route = {in: creep.room.name, to: bankPos.roomName, exit: route[0].exit};
+    }
+    const exit = creep.pos.findClosestByPath(creep.memory._route.exit);
+    if (exit) {
+        creep.moveTo(exit, {reusePath: 10, visualizePathStyle: {stroke: '#ff4444', lineStyle: 'dashed'}});
+    } else {
+        creep.moveTo(bankPos, {reusePath: 10, visualizePathStyle: {stroke: '#ff4444', lineStyle: 'dashed'}});
+    }
+}
+
 const roleAttacker = {
     run: function(creep) {
         if (creep.fatigue !== 0) return;
@@ -50,12 +95,9 @@ const roleAttacker = {
             }
         }
 
-        // Travel в комнату банка.
+        // Travel в комнату банка (через безопасный маршрут).
         if (creep.room.name !== bank.roomName) {
-            creep.moveTo(new RoomPosition(bank.x, bank.y, bank.roomName), {
-                reusePath: 10,
-                visualizePathStyle: {stroke: '#ff4444', lineStyle: 'dashed'},
-            });
+            travelToBankRoom(creep, new RoomPosition(bank.x, bank.y, bank.roomName));
             return;
         }
 

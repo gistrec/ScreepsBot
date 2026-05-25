@@ -68,6 +68,11 @@ function spawnCreeps(room) {
         return;
     }
 
+    // Сбрасываем перед циклом - первый заблокированный по энергии role перепишет.
+    // Если все роли отработали (none blocked) - spawn_need остаётся очищенным,
+    // visualization ничего не покажет.
+    delete room.memory.spawn_need;
+
     if (!roleMiner.spawn(room)) return;
     if (!roleCharger.spawn(room)) return;
     if (!roleRampartDefender.spawn(room)) return;

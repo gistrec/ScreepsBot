@@ -52,6 +52,7 @@ const roleUpgrader = {
 
         if (creepConfiguration.energy > room.energyAvailable) {
             console.log(`[${room.name}] Need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+            utils.recordSpawnNeed(room, 'upgrader', creepConfiguration.energy);
             return false;
         }
 

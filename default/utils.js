@@ -125,6 +125,14 @@ exports.needsChargers = function(room) {
     return room._needsChargers = false;
 }
 
+// Помечаем "комната ждёт энергии для спавна роли X". Используется визуализацией для overlay
+// около контроллера, чтобы было видно что именно блокирует spawn-цепочку. main.js очищает
+// поле в начале каждого spawnCreeps цикла; роли вызывают это, когда возвращают false по
+// причине недостатка энергии.
+exports.recordSpawnNeed = function(room, role, needed) {
+    room.memory.spawn_need = {role, needed, at: Game.time};
+}
+
 // Свободный спавн в комнате, готовый принять задачу spawnCreep.
 // Опции:
 //   primaryOnly  - брать только спавн с именем == room.name (legacy hack из CLAUDE.md

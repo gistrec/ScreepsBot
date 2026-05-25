@@ -93,6 +93,7 @@ const roleHarvester = {
 
             if (room.energyAvailable < BODY_COST) {
                 console.log(`[${room.name}] Need harvester for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
+                utils.recordSpawnNeed(room, 'harvester', BODY_COST);
                 return false;
             }
 

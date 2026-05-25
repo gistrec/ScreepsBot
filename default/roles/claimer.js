@@ -44,6 +44,7 @@ const roleClaimer = {
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Need Claimer, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            utils.recordSpawnNeed(room, 'claimer', creepConfiguration["energy"]);
             return false;
         }
 

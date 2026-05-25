@@ -141,6 +141,19 @@ visualiseRoom = function(room) {
         room.visual.text(text, pos.x + 1, pos.y + 4, {align: 'left', color});
     }
 
+    // Spawn need: какой role и сколько энергии не хватает. Заполняется ролями в spawn(),
+    // очищается в main.js спавн-цикле. Если нет блока - ничего не показываем.
+    const need = room.memory.spawn_need;
+    if (need && need.role) {
+        const have = room.energyAvailable;
+        const enough = have >= need.needed;
+        room.visual.text(
+            `⏳ Spawn ${need.role}: ${have}/${need.needed}e` + (enough ? ' (queued)' : ''),
+            pos.x + 1, pos.y + 5,
+            {align: 'left', color: enough ? '#88ff88' : '#ffaa00'}
+        );
+    }
+
     const expand = Game.flags["Expand"]
     if (expand) {
         // 13x13 tile-aligned (-0.5 offset, size=13) - то же, что у base preview.

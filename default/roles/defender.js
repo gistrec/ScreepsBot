@@ -75,6 +75,7 @@ const roleDefender = {
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Need Defender, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            utils.recordSpawnNeed(room, 'defender', creepConfiguration["energy"]);
             return false;
         }
 

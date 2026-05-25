@@ -60,6 +60,7 @@ const roleCharger = {
 
         if (creepConfiguration.energy > room.energyAvailable) {
             console.log(`[${room.name}] Need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+            utils.recordSpawnNeed(room, 'charger', creepConfiguration.energy);
             return false;
         }
 

@@ -69,6 +69,7 @@ const roleMiner = {
 
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Room need Miner, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            utils.recordSpawnNeed(room, 'miner', creepConfiguration["energy"]);
             return false;
         }
 

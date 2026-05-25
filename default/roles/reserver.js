@@ -33,6 +33,7 @@ const roleReserver = {
 
             if (room.energyAvailable < BODY_COST) {
                 console.log(`[${room.name}] Need reserver for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
+                utils.recordSpawnNeed(room, 'reserver', BODY_COST);
                 return false;
             }
 

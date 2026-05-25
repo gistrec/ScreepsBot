@@ -6,10 +6,16 @@ const taskResource = require('../tasks/resource');
 const taskCreep  = require('../tasks/creep');
 
 
+// max_count подобран по реальной потребности: 2 source × 10 e/tick = 20 e/tick валового
+// дохода, каждый чарджер обрабатывает ~30 e/tick (cap/round-trip). По 2 чарджера хватает
+// с запасом начиная с 1000e (350e cap, RCL 4+). 300e config держит 4 потому что body очень
+// маленькое (100e cap) и часть энергии возится миннером самим - короче спавн ↔ source
+// нужно несколько ferries. Раньше 500e/1000e тоже были по 4/3, из-за чего upgrader не
+// получал spawn-slot на RCL 2-4 пока ВСЯ квота чарджеров не заполнялась.
 const configurations = [
     {"energy": 300,  "max_count": 4, "parts": [MOVE, MOVE, CARRY, MOVE, CARRY, MOVE]}, // Когда на старте есть максимум 300 энергии, спавним простого перевозчика.
-    {"energy": 500,  "max_count": 4, "parts": [MOVE, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]},
-    {"energy": 1000, "max_count": 3, "parts": [MOVE, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]},
+    {"energy": 500,  "max_count": 3, "parts": [MOVE, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]},
+    {"energy": 1000, "max_count": 2, "parts": [MOVE, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]},
     {"energy": 1500, "max_count": 2, "parts": [MOVE, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE, CARRY, MOVE]},
 ];
 

@@ -49,9 +49,13 @@ const roleMiner = {
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         const replacementTtl = utils.minerReplacementTtl(creepConfiguration.parts.length);
 
-        // На начальном уровне удваиваем количество майнеров.
+        // На начальном уровне удваиваем количество майнеров: 250e config даёт 1 WORK =
+        // 2 e/tick, что сильно меньше source-regen 10 e/tick, поэтому два маленьких
+        // миннера на 2-source-комнате полезны. Для 1-source комнаты удвоение бесполезно:
+        // source всё равно bottleneck, 2 миннера на одном источнике не дают двойного
+        // throughput, а спавн 2×250e впустую.
         const roomSources = room.find(FIND_SOURCES);
-        const sourcesCount = (room.energyCapacityAvailable < 550)
+        const sourcesCount = (room.energyCapacityAvailable < 550 && roomSources.length > 1)
             ? 2 * roomSources.length
             : roomSources.length;
         const miners = utils.creepsByRole(room, "miner").filter(c => c.ticksToLive > replacementTtl);
@@ -133,11 +137,6 @@ const roleMiner = {
             return;
         }
 
-        // Поднимаем ресурсы из контейнера.
-        if (container && container.store.getUsedCapacity(RESOURCE_ENERGY) > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-            taskResource.withdrawTarget(creep, container);
-        }
-
         const link = Game.structures[creep.memory.link_id];
         const linkFull = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
         const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
@@ -182,14 +181,18 @@ const roleMiner = {
         // output одного тика (5 WORK = 10e/tick) - creep.harvest() переливает в drop при
         // партиальной нехватке (freeCap=5, harvest 10 → 5 в трюм + 5 на пол). isFull выше
         // ловит только freeCap==0; partial overflow возникает после tryUpgradeController
-        // (drain 5 per tick), который оставляет miner на 95/100.
-        // Если source пуст ИЛИ overflow риск - используем intent-слот на upgradeController
-        // вместо харвеста; tryUpgradeController также drain'ит трюм, освобождая место.
+        // (drain 5/tick), который оставляет miner на 95/100.
+        // Приоритет если харвестить нельзя: дамп в контейнер (чтобы чарджер забрал) >
+        // апгрейд контроллера. Контейнер - единственный путь для чарджера до этого источника,
+        // контроллер апгрейдится из любой комнаты, поэтому контейнер критичнее.
         const target = sources.get(creep);
         const harvestPerTick = creep.body.filter(p => p.type === WORK).length * HARVEST_POWER;
         const canFitHarvest = creep.store.getFreeCapacity(RESOURCE_ENERGY) >= harvestPerTick;
+        const hasEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0;
         if (target && target.energy > 0 && canFitHarvest) {
             taskResource.harvestTarget(creep, target);
+        } else if (hasEnergy && containerUsable) {
+            creep.transfer(container, RESOURCE_ENERGY);
         } else {
             tryUpgradeController(creep);
         }

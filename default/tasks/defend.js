@@ -103,7 +103,6 @@ exports.checkStatus = function(room) {
         const text = `Defending mode was enabled for room ${room.name}\n` +
                      `${enemyCreeps.length} enemy creeps, max rampart drop: ${maxRampartDrop}`;
         console.log(text);
-        Game.notify(text);
         room.memory.defending = true;
     } else {
         room.memory.defending = false;

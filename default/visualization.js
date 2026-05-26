@@ -59,14 +59,101 @@ function updateEnergyEMA(room) {
 }
 
 function formatEnergyCompact(v) {
-    if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
-    if (v >= 1_000)     return (v / 1_000).toFixed(1) + 'k';
-    return String(v);
+    if (v >= 1_000_000) return Math.round(v / 1_000_000) + 'M';
+    if (v >= 1_000)     return Math.round(v / 1_000) + 'k';
+    return String(Math.round(v));
 }
 
 function formatRate(v) {
     const sign = v >= 0 ? '+' : '';
-    return sign + (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1));
+    return sign + Math.round(v);
+}
+
+// World-координаты для имени комнаты вида W11S39 / E5N3. Комнаты на сетке 50×50.
+// W-комнаты идут в отрицательную сторону: W0 = [-50..-1], W1 = [-100..-51] и т.д.
+// N-комнаты аналогично для y.
+function roomNameToWorldOrigin(roomName) {
+    const m = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+    if (!m) return null;
+    const rx = m[1] === 'W' ? -parseInt(m[2]) - 1 : parseInt(m[2]);
+    const ry = m[3] === 'N' ? -parseInt(m[4]) - 1 : parseInt(m[4]);
+    return {x: rx * 50, y: ry * 50};
+}
+
+function worldToRoomPos(wx, wy) {
+    const rx = Math.floor(wx / 50);
+    const ry = Math.floor(wy / 50);
+    const tx = Math.round(wx - rx * 50);
+    const ty = Math.round(wy - ry * 50);
+    const xName = (rx >= 0 ? 'E' + rx : 'W' + (-rx - 1));
+    const yName = (ry >= 0 ? 'S' + ry : 'N' + (-ry - 1));
+    return new RoomPosition(
+        Math.max(0, Math.min(49, tx)),
+        Math.max(0, Math.min(49, ty)),
+        xName + yName,
+    );
+}
+
+// Рисует стрелку from → to на Game.map.visual: основная линия opts + несколько маленьких
+// закрашенных треугольников-наконечников ВДОЛЬ линии (один на ~50 world-units, ≈ комната).
+// Треугольники filled и слегка ярче основной линии, чтобы направление было видно сразу.
+// perpOffset (world units) - смещение всей стрелки перпендикулярно потоку "влево". Нужно
+// при встречных потоках (A→B и B→A): прокидываем +offset с обеих сторон - встречные
+// стрелки оказываются по разные стороны центральной линии и не накладываются.
+function drawMapArrow(from, to, opts, perpOffset = 0) {
+    const fo  = roomNameToWorldOrigin(from.roomName);
+    const tor = roomNameToWorldOrigin(to.roomName);
+    if (!fo || !tor) {
+        Game.map.visual.line(from, to, opts);
+        return;
+    }
+    const fwx = fo.x + from.x, fwy = fo.y + from.y;
+    const twx = tor.x + to.x,  twy = tor.y + to.y;
+    const vx = twx - fwx, vy = twy - fwy;
+    const L  = Math.sqrt(vx * vx + vy * vy);
+    if (L < 10) {
+        Game.map.visual.line(from, to, opts);
+        return;
+    }
+    const ux = vx / L, uy = vy / L;
+
+    // Perpendicular "left" of flow direction: (-uy, ux).
+    const ofx = fwx - perpOffset * uy;
+    const ofy = fwy + perpOffset * ux;
+    const otx = twx - perpOffset * uy;
+    const oty = twy + perpOffset * ux;
+    const lineFrom = (perpOffset === 0) ? from : worldToRoomPos(ofx, ofy);
+    const lineTo   = (perpOffset === 0) ? to   : worldToRoomPos(otx, oty);
+    Game.map.visual.line(lineFrom, lineTo, opts);
+
+    const TRI_LEN = 5;     // длина треугольника вдоль линии
+    const TRI_W   = 2;     // полу-ширина у основания (2.5:1 - умеренно острый)
+    const SPACING = 50;    // один треугольник на ~комнату
+    const count = Math.max(2, Math.min(8, Math.floor(L / SPACING)));
+
+    const color = opts.color || '#ffffff';
+    const triOpts = {
+        fill: color,
+        stroke: color,
+        strokeWidth: 0.3,
+        opacity: Math.min(1, (opts.opacity || 0.5) + 0.4),
+    };
+
+    for (let i = 1; i <= count; i++) {
+        const t = i / (count + 1);
+        const cx = ofx + (otx - ofx) * t;
+        const cy = ofy + (oty - ofy) * t;
+        const tipX  = cx + (TRI_LEN / 2) * ux;
+        const tipY  = cy + (TRI_LEN / 2) * uy;
+        const baseX = cx - (TRI_LEN / 2) * ux;
+        const baseY = cy - (TRI_LEN / 2) * uy;
+        const points = [
+            worldToRoomPos(tipX, tipY),
+            worldToRoomPos(baseX - TRI_W * uy, baseY + TRI_W * ux),
+            worldToRoomPos(baseX + TRI_W * uy, baseY - TRI_W * ux),
+        ];
+        Game.map.visual.poly(points, triOpts);
+    }
 }
 
 // Кеш экспортированных RoomVisual для тяжёлых статичных частей (башни, стенки).
@@ -268,21 +355,33 @@ visualiseMap = function(room) {
         .text(`⚡${room.energyAvailable}/${room.energyCapacityAvailable}`, new RoomPosition(0, 4, room.name), {align: 'left', fontSize: 6})
         .text(`🏰${room.controller.level} lvl - ${room.controller.progressTotal ? (room.controller.progress / room.controller.progressTotal * 100).toFixed(1) + "%" : "MAX"}`, new RoomPosition(0, 10, room.name), {align: 'left', fontSize: 6})
 
+    // Компактная энерго-статистика: total + 3 окна EWMA без лейблов.
+    // EMA уже посчитан в visualiseRoom (визуализация процессит rooms в порядке room->map).
+    const stats = room.memory.energy_stats;
+    const energyParts = [`🏦${formatEnergyCompact(room.getTotalEnergy())}`];
+    if (stats) {
+        for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
+            energyParts.push(stats.samples >= ENERGY_WINDOWS[i].warmup ? formatRate(stats.ema[i]) : '—');
+        }
+    }
+    Game.map.visual.text(energyParts.join(' '), new RoomPosition(0, 16, room.name), {align: 'left', fontSize: 6});
+
+    // Defending indicator - аналог nuker'а: иконка слева от ☢, цветом отличаем состояние.
+    // Красный = под атакой, зелёный = мир. Символ без FE0F (text-presentation), чтобы color
+    // применялся (emoji-вариант ⚔️ может игнорить color на некоторых рендерерах).
+    const defColor = room.isDefending ? '#FF4444' : '#00FF00';
+    Game.map.visual.text("⚔", new RoomPosition(49, 40, room.name), {color: defColor, align: 'right', fontSize: 10});
+
+    // Лабы - отдельной строкой над defending. Шорт-форма статуса, цвет отражает важность.
     const ls = room.memory.lab_status;
     if (ls && ls.output && ls.total > 0) {
         let labText, labColor;
-        if (ls.forceEvac)      { labText = `🧪 ${ls.output}: evac`;       labColor = '#ff66ff'; }
-        else if (ls.dirty > 0) { labText = `🧪 ${ls.output}: dirty`;      labColor = '#ffaa00'; }
-        else if (ls.stuck > 0) { labText = `🧪 ${ls.output}: stuck`;      labColor = '#ff5555'; }
-        else if (ls.sourceLow) { labText = `🧪 ${ls.output}: idle`;       labColor = '#ffff00'; }
-        else                   { labText = `🧪 ${ls.output}: processing`; labColor = '#88ccff'; }
-        Game.map.visual.text(labText, new RoomPosition(0, 16, room.name), {color: labColor, align: 'left', fontSize: 6});
-    }
-
-    if (room.isDefending) {
-        Game.map.visual.text("⚔️ On", new RoomPosition(0, 47, room.name), {color: '#FF0000', align: 'left', fontSize: 6})
-    } else {
-        Game.map.visual.text("⚔️ Off", new RoomPosition(0, 47, room.name), {color: '#00FF00', align: 'left', fontSize: 6})
+        if (ls.forceEvac)      { labText = `${ls.output}: evac`;  labColor = '#ff66ff'; }
+        else if (ls.dirty > 0) { labText = `${ls.output}: dirty`; labColor = '#ffaa00'; }
+        else if (ls.stuck > 0) { labText = `${ls.output}: stuck`; labColor = '#ff5555'; }
+        else if (ls.sourceLow) { labText = `${ls.output}: idle`;  labColor = '#ffff00'; }
+        else                   { labText = `${ls.output}: proc`;  labColor = '#88ccff'; }
+        Game.map.visual.text(labText, new RoomPosition(0, 46, room.name), {color: labColor, align: 'left', fontSize: 6});
     }
 
     // Компактный nuker-индикатор справа на той же строке. Зелёный - готов к выстрелу
@@ -326,8 +425,26 @@ function visualiseLabFlows() {
 
             const from = new RoomPosition(25, 25, producerName);
             const to   = new RoomPosition(25, 25, consumerName);
-            Game.map.visual.line(from, to, {color: '#88ccff', width: 0.6, opacity: 0.5, lineStyle: 'dashed'});
-            Game.map.visual.text(mineral, new RoomPosition(8, 28 + i * 6, consumerName), {color: '#88ccff', fontSize: 5, align: 'left'});
+            const ARROW_OFFSET = 3;   // смещение стрелки "влево" от потока в world units
+            const LABEL_OFFSET = 6;   // лейбл за стрелкой (дальше от центра)
+            drawMapArrow(from, to, {color: '#88ccff', width: 0.6, opacity: 0.5, lineStyle: 'dashed'}, ARROW_OFFSET);
+
+            // Лейбл на середине стрелки, тоже "влево" от потока (за стрелкой). Встречные
+            // стрелки (W9S39 ↔ W9S37) разъезжаются по разные стороны центральной линии -
+            // и сами стрелки, и их лейблы не накладываются.
+            const fo  = roomNameToWorldOrigin(producerName);
+            const tor = roomNameToWorldOrigin(consumerName);
+            if (fo && tor) {
+                const vx = (tor.x + 25) - (fo.x + 25);
+                const vy = (tor.y + 25) - (fo.y + 25);
+                const L  = Math.sqrt(vx * vx + vy * vy);
+                if (L > 0) {
+                    const ux = vx / L, uy = vy / L;
+                    const mx = fo.x + 25 + vx / 2 - LABEL_OFFSET * uy;
+                    const my = fo.y + 25 + vy / 2 + LABEL_OFFSET * ux;
+                    Game.map.visual.text(mineral, worldToRoomPos(mx, my), {color: '#88ccff', fontSize: 7, align: 'center'});
+                }
+            }
         }
     }
 }

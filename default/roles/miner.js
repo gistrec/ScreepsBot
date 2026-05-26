@@ -146,15 +146,17 @@ const roleMiner = {
         // Полный трюм - перед харвестом разгружаемся, иначе creep.harvest() сольёт overflow
         // на пол. Screeps "auto-overflow в контейнер" работает только когда контейнер РЯДОМ
         // (range 1), а майнер стоит ON контейнере (same tile) - там overflow не срабатывает.
+        // Приоритет link > container: link сам пушит на дальний приёмник (storage/upgrader),
+        // контейнер требует чарджера. При забитом линке чарджер вообще не нужен этой ветке.
         if (isFull) {
-            // 1. Контейнер под крипом со свободным местом.
-            if (containerUsable) {
-                creep.transfer(container, RESOURCE_ENERGY);
-                return;
-            }
-            // 2. Линк со свободным местом.
+            // 1. Линк со свободным местом.
             if (link && !linkFull) {
                 taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
+                return;
+            }
+            // 2. Контейнер под крипом со свободным местом.
+            if (containerUsable) {
+                creep.transfer(container, RESOURCE_ENERGY);
                 return;
             }
             // 3. Bootstrap-комната (нет storage): сами носим в spawn/extension. Иначе
@@ -182,24 +184,21 @@ const roleMiner = {
         // партиальной нехватке (freeCap=5, harvest 10 → 5 в трюм + 5 на пол). isFull выше
         // ловит только freeCap==0; partial overflow возникает после tryUpgradeController
         // (drain 5/tick), который оставляет miner на 95/100.
-        // Приоритет если харвестить нельзя: дамп в контейнер (чтобы чарджер забрал) >
-        // апгрейд контроллера. Контейнер - единственный путь для чарджера до этого источника,
-        // контроллер апгрейдится из любой комнаты, поэтому контейнер критичнее.
+        // Приоритет если харвестить нельзя: линк > контейнер > апгрейд. Линк лучше контейнера
+        // (см. isFull-комментарий выше), оба лучше апгрейда (апгрейдить контроллер можно из
+        // любой комнаты, а заполнить локальный линк/контейнер - только мы).
         const target = sources.get(creep);
         const harvestPerTick = creep.body.filter(p => p.type === WORK).length * HARVEST_POWER;
         const canFitHarvest = creep.store.getFreeCapacity(RESOURCE_ENERGY) >= harvestPerTick;
         const hasEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0;
         if (target && target.energy > 0 && canFitHarvest) {
             taskResource.harvestTarget(creep, target);
+        } else if (hasEnergy && link && !linkFull) {
+            taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
         } else if (hasEnergy && containerUsable) {
             creep.transfer(container, RESOURCE_ENERGY);
         } else {
             tryUpgradeController(creep);
-        }
-
-        // Передаем ресурсы линку.
-        if (link && !creep.store.getFreeCapacity(RESOURCE_ENERGY) && creep.store.getCapacity(RESOURCE_ENERGY) && link.store.getFreeCapacity(RESOURCE_ENERGY)) {
-            taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
         }
 	}
 };

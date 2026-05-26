@@ -22,6 +22,53 @@ const STRUCTURE_PREVIEW_LABEL = {
 
 let statuses = {}
 
+// Энерго-статистика по комнате: EWMA скорости накопления getTotalEnergy() (с battery×10)
+// за 3 окна. Аналог load-average в top: разные tau показывают краткосрочный/среднесрочный/
+// долгосрочный режим. Сэмплируем раз в 50 тиков чтобы getTotalEnergy() не молотился каждый
+// тик (он делает find(FIND_STRUCTURES) пробег по storage/terminal/factory).
+const ENERGY_SAMPLE_STEP = 50;
+const ENERGY_WINDOWS = [
+    {tau:   300, label: '300t',  warmup:  6},   // ~15 мин - спайки
+    {tau:  3000, label: '3kt',   warmup: 60},   // ~2.5ч - режим
+    {tau: 30000, label: '30kt',  warmup: 600},  // ~25ч - тренд
+];
+
+function updateEnergyEMA(room) {
+    if (Game.time % ENERGY_SAMPLE_STEP !== 0) return;
+    let stats = room.memory.energy_stats;
+    const current = room.getTotalEnergy();
+    if (!stats) {
+        room.memory.energy_stats = {prev: current, prevTick: Game.time, ema: [0, 0, 0], samples: 0};
+        return;
+    }
+    const dt = Game.time - stats.prevTick;
+    if (dt <= 0) return;
+    const rate = (current - stats.prev) / dt;
+
+    if (stats.samples === 0) {
+        for (let i = 0; i < ENERGY_WINDOWS.length; i++) stats.ema[i] = rate;
+    } else {
+        for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
+            const alpha = 1 - Math.exp(-dt / ENERGY_WINDOWS[i].tau);
+            stats.ema[i] = alpha * rate + (1 - alpha) * stats.ema[i];
+        }
+    }
+    stats.prev = current;
+    stats.prevTick = Game.time;
+    stats.samples += 1;
+}
+
+function formatEnergyCompact(v) {
+    if (v >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
+    if (v >= 1_000)     return (v / 1_000).toFixed(1) + 'k';
+    return String(v);
+}
+
+function formatRate(v) {
+    const sign = v >= 0 ? '+' : '';
+    return sign + (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1));
+}
+
 // Кеш экспортированных RoomVisual для тяжёлых статичных частей (башни, стенки).
 // Обновляется раз в HEAVY_VISUAL_TTL тиков, между обновлениями просто импортируется.
 const HEAVY_VISUAL_TTL = 10;
@@ -153,6 +200,19 @@ visualiseRoom = function(room) {
             {align: 'left', color: enough ? '#88ff88' : '#ffaa00'}
         );
     }
+
+    // Энерго-статистика: total stockpile + 3 окна EWMA скорости (e/tick).
+    updateEnergyEMA(room);
+    const stats = room.memory.energy_stats;
+    const totalE = room.getTotalEnergy();
+    const parts = [`🏦 ${formatEnergyCompact(totalE)}`];
+    if (stats) {
+        for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
+            const w = ENERGY_WINDOWS[i];
+            parts.push(stats.samples >= w.warmup ? `${w.label}:${formatRate(stats.ema[i])}` : `${w.label}:—`);
+        }
+    }
+    room.visual.text(parts.join('  '), pos.x + 1, pos.y + 6, {align: 'left'});
 
     const expand = Game.flags["Expand"]
     if (expand) {

@@ -81,7 +81,8 @@ const roleRampartDefender = {
         // Один find на 3 приоритета (хилеры > работяги > боевые) вместо трёх отдельных:
         // под атакой защитников бывает 2-3, каждый защитник сканировал комнату 3 раза за тик.
         // findClosestByRange(array) на уже отфильтрованной подмножестве не делает нового find.
-        const allHostiles = creep.room.find(FIND_HOSTILE_CREEPS);
+        // Кеш per-tick шарится с defend.checkStatus/fireTower (несколько защитников = 0 лишних find).
+        const allHostiles = creep.room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS));
         const closestWithPart = (...parts) => {
             const subset = allHostiles.filter(c => c.body.some(b => parts.includes(b.type)));
             return subset.length ? creep.pos.findClosestByRange(subset) : null;

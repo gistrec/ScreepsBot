@@ -379,8 +379,8 @@ visualiseRoom = function(room) {
         }
     }
 
-    // Враги двигаются - кешировать нельзя. Один проход по body вместо четырёх filter+reduce.
-    const enemies = room.find(FIND_HOSTILE_CREEPS);
+    // Per-tick кеш безопасен: позиции врагов внутри одного тика статичны. Шарится с defend.checkStatus.
+    const enemies = room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS));
     for (const enemy of enemies) {
         let heal = 0, ranged_heal = 0, attack = 0, ranged_attack = 0;
         for (const part of enemy.body) {

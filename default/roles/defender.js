@@ -25,7 +25,7 @@ const roleDefender = {
         const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_WALL || s.structureType == STRUCTURE_RAMPART });
 
         // Координация с rampartDefender'ами и реакция на nuke'и: rampart'ы под угрозой ремонтируются в первую очередь.
-        const enemies = room.find(FIND_HOSTILE_CREEPS);
+        const enemies = room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS));
         const nukes   = room.find(FIND_NUKES);
         const isUnderThreat = (wall) => {
             if (enemies.some(e => wall.pos.inRangeTo(e, 5)))    return true;

@@ -8,7 +8,9 @@ exports.checkStatus = function(room) {
     }
 
     // Учитываем всех опасных вражеских крипов, включая Invader - иначе при их атаках не включается defending mode.
-    const enemyCreeps = room.find(FIND_HOSTILE_CREEPS, {filter: creep => _.find(creep.body, bodyPart => [ATTACK, RANGED_ATTACK, CLAIM, WORK].includes(bodyPart.type))});
+    // Кешируем сырой список один раз за тик, потом filter тут и в fireTower шарят его.
+    const allHostiles = room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS));
+    const enemyCreeps = allHostiles.filter(creep => creep.body.some(b => [ATTACK, RANGED_ATTACK, CLAIM, WORK].includes(b.type)));
     room.memory.enemy_creeps = enemyCreeps.length;
 
     // Под defending checkStatus вызывается каждый тик - используем общий per-tick кеш структур
@@ -123,7 +125,9 @@ exports.fireTower = function(room) {
     const woundedCreeps = room.find(FIND_MY_CREEPS, {
         filter: (c) => c.hits != c.hitsMax && !c.memory.recycling
     });
-    const hostileCreeps = !room.controller.safeMode ? room.find(FIND_HOSTILE_CREEPS) : [];
+    const hostileCreeps = !room.controller.safeMode
+        ? room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS))
+        : [];
 
     const structuresByType = utils.getStructuresByType(room);
     const ramparts = structuresByType[STRUCTURE_RAMPART] || [];

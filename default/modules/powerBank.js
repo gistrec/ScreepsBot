@@ -56,6 +56,7 @@ function ensureBoostMinerals(home, body, boosts) {
 }
 
 exports.process = function() {
+    if (Memory.power_bank_disabled) return;
     if (!Memory.power_banks) return;
     if (Game.time % 10 !== 0) return;
 

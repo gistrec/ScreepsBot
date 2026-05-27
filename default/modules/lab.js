@@ -1,57 +1,43 @@
 const profiler = require('../screeps-profiler');
+const utils = require('../utils');
 
 
-const labs = exports.labs = {
-    "W9S37": {
-        "sources": ["63440992ab176745a40c5ec2", "6343d07c2b2c07264c03585b"],
-        "targets": [
-            "6343ee8734a4628e41ca248b", "63444cf6be20d6760d95a87c",
-            "6343b6c191a2f44e18eec75e", "63445eef427aeb1854551f6b",
-            "6343b17e85f9845110af51c4", "634430cf80f0efd17aff4fde",
-            "6343c4b3e49929a158587811", "6343e4e16fb76ec434da414b",
-        ],
-        "resources": ["H", "O"],
-    },
-    "W9S39": {
-        "sources": ["635e2440d147b7492df830d6", "635e33316a3846049e2fc313"],
-        "targets": [
-            "635e216cb16ac13d68c83bf4", "635e2b44d0e8e344cf6861ed",
-            "635e1ddbbe2959e3a11fb3bc", "635e2f53fed71fba94ba1f1e",
-            "635e29b6cb5f3a2e7e766129", "635e43d54581866082f4ccfa",
-            "635e39befed71f32a2ba2274", "635e4c5aade4e148d9fb9fb9",
-        ],
-        "resources": ["LH", "OH"]
-    },
-    "W8S36": {
-        "sources": ["6356cff6b16ac1e50dc5ee88", "6356bfe05e9c7b4a5a6fde2d"],
-        "targets": [
-            "6357115b6a3846ac6f2d87e5", "63578426fb83953ef004f7ed",
-            "6356c44b5bcf9d0681031fec", "635742a2cfa540c1c6485667",
-            "6356b5104419950918038e5b", "6356e061f2c78209c5fc44e0",
-            "635bb7cd6a38464fae2efbde", "635be33aea1f7e61c8ab5a9e",
-        ],
-        "resources": ["X", "LH2O"]
-    },
-    "W11S39": {
-        "sources": ["637ef06cfed71f7d69c33e81", "636d60de8d866b7128c9d81a"],
-        "targets": [
-            "637f70f16d7b71520803ab24", "636dcd91046179e3d70e3b99",
-            "64a28cc2312d4c7e0e4f160b", "64a351747efcb80fd437e67b",
-            "64a29a662658b7bcad52c53b", "64a37ba7ef4e1641cec512db",
-            "637f927fd63e3fa426e59614", "636dbfd6d147b7469cfd1844",
-        ],
-        "resources": ["L", "H"]
-    },
-    "W12S39": {
-        "sources": ["6365f6133f7af3dd0ab2e981", "6378c26da806deb4764d7196"],
-        "targets": [
-            "6365d7f57a86a4bf42c52835", "6378b1f5bae3d5cea9243183",
-            "64a2156cc3ba53316d6b8147", "64a2b926a238fc9366a3e311",
-            "64a24eff877ed8332ba6b0b4", "64a35b4646a53b65a3a9acea",
-            "636638aacfa5402f794ceca7", "6378d5733a1a4efa6acb5bbe",
-        ],
-        "resources": ["Z", "H"]
-    }
+// Семантический конфиг лабы: пара входных минералов на комнату. Реакция выводится
+// через REACTIONS[r1][r2]. Source/target лабы детектятся автоматически по геометрии
+// (см. getLabConfig) - руками править ID после rebuild'а больше не нужно.
+const labResources = exports.labResources = {
+    "W9S37":  ["H",  "O"],
+    "W9S39":  ["LH", "OH"],
+    "W8S36":  ["X",  "LH2O"],
+    "W11S39": ["L",  "H"],
+    "W12S39": ["Z",  "H"],
+};
+
+// Авто-определение ролей лаб. Source-лаба обязана быть в range 2 от ВСЕХ остальных
+// (требование runReaction). Из всех таких берём 2 самые центральные (по сумме Chebyshev-
+// дистанций) - на 10-кластере RCL 8 ровно 2 таких и есть. На неполных кластерах
+// (RCL 6/7) heuristic может зацепить "не те" лабы, но это transient: при достройке
+// до 10 лаб роли стабилизируются. Per-tick кеш на room - find() и сортировка O(N²)
+// иначе крутятся в каждом из ~5 вызовов за тик.
+exports.getLabConfig = function(room) {
+    if (!labResources[room.name]) return null;
+    if (room._labConfig !== undefined) return room._labConfig;
+
+    const labs = utils.getMyStructuresByType(room)[STRUCTURE_LAB] || [];
+    if (labs.length < 3) return room._labConfig = null;
+
+    const candidates = labs.filter(lab =>
+        labs.every(other => lab === other || lab.pos.inRangeTo(other, 2))
+    );
+    if (candidates.length < 2) return room._labConfig = null;
+
+    candidates.sort((a, b) =>
+        _.sum(labs, l => l.pos.getRangeTo(a)) - _.sum(labs, l => l.pos.getRangeTo(b))
+    );
+    const sources = candidates.slice(0, 2);
+    const targets = labs.filter(l => !sources.includes(l));
+
+    return room._labConfig = { sources, targets, resources: labResources[room.name] };
 };
 
 const rooms = exports.rooms = {
@@ -124,14 +110,13 @@ function getBoostReservedLabIds() {
 const DOWNSTREAM_SATURATION_THRESHOLD = 30000;
 
 // Потребитель = комната, которая импортирует ресурс (`rooms[name].require`)
-// или использует его как вход локальной лабы (`labs[name].resources`).
+// или использует его как вход локальной лабы (`labResources[name]`).
 // Используется чтобы тормозить экстрактор и реакции когда дальше складывать некуда.
 exports.isDownstreamSaturated = function(mineral) {
     let consumers = 0;
     for (const consumerName in rooms) {
         const isImporter = rooms[consumerName]["require"].includes(mineral);
-        const labResources = labs[consumerName] ? labs[consumerName]["resources"] : [];
-        const isLocalConsumer = labResources.includes(mineral);
+        const isLocalConsumer = (labResources[consumerName] || []).includes(mineral);
         if (!isImporter && !isLocalConsumer) continue;
 
         const consumer = Game.rooms[consumerName];
@@ -148,7 +133,7 @@ exports.isDownstreamSaturated = function(mineral) {
 // Снимок состояния лаб для визуализации. Сохраняется в room.memory.lab_status,
 // читается из visualization.js. Обновляется на каждый вызов runReaction (раз в 10 тиков).
 function updateLabStatus(room, expectedOutput, source1, source2) {
-    const targetLabs = labs[room.name]["targets"].map(id => Game.getObjectById(id)).filter(l => l);
+    const targetLabs = exports.getLabConfig(room).targets;
     let cooling = 0, runnable = 0, stuck = 0, dirty = 0;
     for (const lab of targetLabs) {
         if (lab.mineralType && expectedOutput && lab.mineralType != expectedOutput) {
@@ -201,7 +186,7 @@ function updateLabStatus(room, expectedOutput, source1, source2) {
 // лабы для других задач (boost, смена реакции). Throttle: 1 transfer-task за вызов.
 function forceEvacuateLabs(room, expectedOutput) {
     const reservedLabs = getBoostReservedLabIds();
-    const targetLabs = labs[room.name]["targets"].map(id => Game.getObjectById(id)).filter(l => l);
+    const targetLabs = exports.getLabConfig(room).targets;
     for (const lab of targetLabs) {
         if (reservedLabs.has(lab.id)) continue;
         if (!lab.mineralType) continue;
@@ -225,15 +210,13 @@ function forceEvacuateLabs(room, expectedOutput) {
 exports.runReaction = function(room) {
     if (room.hasHostiles) return;
 
-    const source1 = Game.getObjectById(labs[room.name]["sources"][0]);
-    const source2 = Game.getObjectById(labs[room.name]["sources"][1]);
-    if (!source1 || !source2) {
-        console.log(`[${room.name}] Нет source лаборатории`);
+    const cfg = exports.getLabConfig(room);
+    if (!cfg) {
+        console.log(`[${room.name}] Нет полного лаб-кластера (source-лабы не определились)`);
         return;
     }
-
-    const resource1 = labs[room.name]["resources"][0];
-    const resource2 = labs[room.name]["resources"][1];
+    const [source1, source2] = cfg.sources;
+    const [resource1, resource2] = cfg.resources;
     const expectedOutput = REACTIONS[resource1] && REACTIONS[resource1][resource2];
 
     // Обновляем статус ДО ранних возвратов, чтобы случай "нет входных минералов" попадал в визуализацию.
@@ -262,15 +245,10 @@ exports.runReaction = function(room) {
     const reservedLabs = getBoostReservedLabIds();
 
     let reactionsQueued = 0;
-    for (const lab_id of labs[room.name]["targets"]) try {
+    for (const lab of cfg.targets) try {
         // Лаба занята активным буст-таском - не запускаем реакции и не дампим её содержимое,
         // иначе boost.js придётся постоянно перезаливать её через чарджера.
-        if (reservedLabs.has(lab_id)) continue;
-        const lab = Game.getObjectById(lab_id);
-        if (!lab) {
-            console.log(`[${room.name}] Нет target лаборатории ${lab_id}`);
-            continue;
-        }
+        if (reservedLabs.has(lab.id)) continue;
         // Если в target-лабе оказался "чужой" минерал (после boost-задачи или смены конфига) -
         // выгружаем его, иначе runReaction вернёт ERR_INVALID_TARGET и лаба простаивает.
         if (lab.mineralType && expectedOutput && lab.mineralType != expectedOutput) {
@@ -279,8 +257,8 @@ exports.runReaction = function(room) {
                 ? room.terminal
                 : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
             if (dump) {
-                console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab_id} (expected ${expectedOutput})`);
-                room.transfer(lab.mineralType, lab_id, dump.id);
+                console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab.id} (expected ${expectedOutput})`);
+                room.transfer(lab.mineralType, lab.id, dump.id);
                 transfersQueued++;
             }
             continue;
@@ -301,12 +279,12 @@ exports.runReaction = function(room) {
         // Перемещаем ресурсы из лабы, если она заполнена. Только одна задача за вызов.
         if (transfersQueued == 0 && lab.store.getUsedCapacity(lab.mineralType) > LAB_MINERAL_CAPACITY * 0.75) {
             if (room.terminal && room.terminal.store.getUsedCapacity(lab.mineralType) < 10000 && room.terminal.store.getFreeCapacity() > 10000) {
-                room.transfer(lab.mineralType, lab_id, room.terminal.id);
+                room.transfer(lab.mineralType, lab.id, room.terminal.id);
                 transfersQueued++;
                 continue;
             }
             if (room.storage && room.storage.store.getUsedCapacity(lab.mineralType) < 100000 && room.storage.store.getFreeCapacity() > 10000) {
-                room.transfer(lab.mineralType, lab_id, room.storage.id);
+                room.transfer(lab.mineralType, lab.id, room.storage.id);
                 transfersQueued++;
                 continue;
             }
@@ -317,15 +295,10 @@ exports.runReaction = function(room) {
 exports.refillLabs = function(room) {
     if (room.hasHostiles) return;
 
-    const source1 = Game.getObjectById(labs[room.name]["sources"][0]);
-    const source2 = Game.getObjectById(labs[room.name]["sources"][1]);
-    if (!source1 || !source2) {
-        console.log(`[${room.name}] Нет source лаборатории`);
-        return;
-    }
-
-    const resource1 = labs[room.name]["resources"][0];
-    const resource2 = labs[room.name]["resources"][1];
+    const cfg = exports.getLabConfig(room);
+    if (!cfg) return;
+    const [source1, source2] = cfg.sources;
+    const [resource1, resource2] = cfg.resources;
 
     // Не заливаем под завязку: 1500 хватит на ~30 циклов реакций, но не блокирует ценные ресурсы.
     const REFILL_TARGET = 1500;
@@ -418,7 +391,7 @@ exports.transferResourcesBetweenRooms = function() {
 
                 const transfer = {resource_type: requireMineral, source_id: sourceRoom.storage.id, target_id: sourceRoom.terminal.id, max_resource_count_in_target: 10000};
 
-                const charger = require('../utils').creepsByRole(sourceRoom, "charger").filter(c => !c.memory.transfer).shift();
+                const charger = utils.creepsByRole(sourceRoom, "charger").filter(c => !c.memory.transfer).shift();
                 if (charger) charger.memory.transfer = transfer;
             }
         }
@@ -429,7 +402,7 @@ exports.process = function() {
     for (const roomName in Game.rooms) try {
         const room = Game.rooms[roomName];
         // Обрабатываем только комнаты с лабами.
-        if (!labs[roomName]) continue;
+        if (!labResources[roomName]) continue;
 
         // Cooldown реакции (REACTION_TIME) минимум 15 тиков, поэтому опрос раз в 10 тиков ничего не упускает.
         if (Game.time % 10 === 0) {

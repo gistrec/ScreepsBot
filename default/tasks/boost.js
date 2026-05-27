@@ -132,9 +132,9 @@ exports.checkBoost = function(creep) {
         // Исключение - boost_force: занимаем target-лабу под буст (lab.js пропускает её
         // в runReaction пока creep.memory.lab_id указывает на неё). Source-лабы не трогаем
         // никогда: refillLabs дозаливает их каждые 100 тиков, конфликт неизбежен.
-        const labConfig = labModule.labs[creep.room.name];
-        const reactionIds = new Set(labConfig ? [...labConfig.sources, ...labConfig.targets] : []);
-        const sourceIds   = new Set(labConfig ? labConfig.sources : []);
+        const labConfig = labModule.getLabConfig(creep.room);
+        const reactionIds = new Set(labConfig ? [...labConfig.sources, ...labConfig.targets].map(l => l.id) : []);
+        const sourceIds   = new Set(labConfig ? labConfig.sources.map(l => l.id) : []);
 
         const usedLabs = Object.keys(Game.creeps).map(creepName => Game.creeps[creepName].memory.lab_id).filter(x => x);
         const lab = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {

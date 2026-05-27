@@ -20,24 +20,25 @@ const labResources = exports.labResources = {
 // до 10 лаб роли стабилизируются. Per-tick кеш на room - find() и сортировка O(N²)
 // иначе крутятся в каждом из ~5 вызовов за тик.
 exports.getLabConfig = function(room) {
-    if (!labResources[room.name]) return null;
-    if (room._labConfig !== undefined) return room._labConfig;
+    return room.cache('labConfig', r => {
+        if (!labResources[r.name]) return null;
 
-    const labs = utils.getMyStructuresByType(room)[STRUCTURE_LAB] || [];
-    if (labs.length < 3) return room._labConfig = null;
+        const labs = utils.getMyStructuresByType(r)[STRUCTURE_LAB] || [];
+        if (labs.length < 3) return null;
 
-    const candidates = labs.filter(lab =>
-        labs.every(other => lab === other || lab.pos.inRangeTo(other, 2))
-    );
-    if (candidates.length < 2) return room._labConfig = null;
+        const candidates = labs.filter(lab =>
+            labs.every(other => lab === other || lab.pos.inRangeTo(other, 2))
+        );
+        if (candidates.length < 2) return null;
 
-    candidates.sort((a, b) =>
-        _.sum(labs, l => l.pos.getRangeTo(a)) - _.sum(labs, l => l.pos.getRangeTo(b))
-    );
-    const sources = candidates.slice(0, 2);
-    const targets = labs.filter(l => !sources.includes(l));
+        candidates.sort((a, b) =>
+            _.sum(labs, l => l.pos.getRangeTo(a)) - _.sum(labs, l => l.pos.getRangeTo(b))
+        );
+        const sources = candidates.slice(0, 2);
+        const targets = labs.filter(l => !sources.includes(l));
 
-    return room._labConfig = { sources, targets, resources: labResources[room.name] };
+        return { sources, targets, resources: labResources[r.name] };
+    });
 };
 
 const rooms = exports.rooms = {

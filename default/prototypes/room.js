@@ -1,3 +1,13 @@
+// Per-tick кеш на room. Screeps пересоздаёт room object каждый тик, поэтому подвешенный
+// _cache живёт ровно один тик - явная инвалидация не нужна. Factory вызывается лениво
+// и ровно один раз за тик; null/undefined тоже кешируются (`in`, не `=== undefined`),
+// чтобы повторные обращения не пересчитывали "ничего не нашлось".
+Room.prototype.cache = function(key, factory) {
+    if (!this._cache) this._cache = {};
+    if (!(key in this._cache)) this._cache[key] = factory(this);
+    return this._cache[key];
+};
+
 // Состояние угрозы. Три уровня, отвечают на разные вопросы; не объединять в один флаг -
 // семантика разная и call-сайты опираются на конкретный.
 //

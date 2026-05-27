@@ -6,16 +6,16 @@ const utils = require('../utils');
 // всё, что не source: обычно один линк у storage и опционально один у controller.
 // Per-tick кеш чтобы не звать find() на каждый transferLinkEnergy.
 function getLinkConfig(room) {
-    if (room._linkConfig !== undefined) return room._linkConfig;
+    return room.cache('linkConfig', r => {
+        const links = utils.getMyStructuresByType(r)[STRUCTURE_LINK] || [];
+        if (links.length === 0) return null;
 
-    const links = utils.getMyStructuresByType(room)[STRUCTURE_LINK] || [];
-    if (links.length === 0) return room._linkConfig = null;
+        const sources = r.find(FIND_SOURCES);
+        const sourceLinks = links.filter(l => sources.some(s => l.pos.inRangeTo(s, 2)));
+        const targetLinks = links.filter(l => !sourceLinks.includes(l));
 
-    const sources = room.find(FIND_SOURCES);
-    const sourceLinks = links.filter(l => sources.some(s => l.pos.inRangeTo(s, 2)));
-    const targetLinks = links.filter(l => !sourceLinks.includes(l));
-
-    return room._linkConfig = { sources: sourceLinks, targets: targetLinks };
+        return { sources: sourceLinks, targets: targetLinks };
+    });
 }
 
 exports.transferLinkEnergy = function(room) {

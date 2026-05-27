@@ -141,10 +141,17 @@ exports.findFreeSpawn = function(room, {primaryOnly = true, requireActive = true
     }).shift();
 }
 
-// Свои крипы в комнате с заданной ролью. Тонкая обёртка над find - per-tick кеш не делаем,
-// т.к. в одном тике может быть spawnCreep между вызовами и кеш окажется устаревшим.
+// Свои крипы в комнате с заданной ролью. Per-tick кеш под отдельным ключом на роль.
+// Раньше думал "spawnCreep может произойти между вызовами и кеш устареет" - на практике:
+// (а) внутри одного spawn() вызова после spawnCreep не читаем creepsByRole; (б) если из
+// spawnCreeps вышел true (spawn'нул), последующие callers в том же тике увидят stale-список
+// (без только что заспавненного крипа с .spawning=true) - но это benign: ни один callsite
+// не зависит от точной видимости свежеспавненного. Hot caller - charger.run, который зовёт
+// это N×тик на N чарджеров. Возвращаемый массив НЕ МУТИРОВАТЬ (не .shift/.push на нём напрямую) -
+// shared между всеми callers тика; .filter/.map/.slice безопасны.
 exports.creepsByRole = function(room, role) {
-    return room.find(FIND_MY_CREEPS, {filter: c => c.memory.role === role});
+    return room.cache('creeps:' + role,
+        r => r.find(FIND_MY_CREEPS, {filter: c => c.memory.role === role}));
 }
 
 // Аналог для глобального Game.creeps (используется для remote-ролей: harvester/reserver).

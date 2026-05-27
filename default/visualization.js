@@ -79,11 +79,23 @@ const CPU_WINDOWS = [
     {tau: 30000, label: '30kt',  warmup: 1000},  // ~25ч - тренд
 ];
 
+// Флаг живёт ровно один global. На первом тике после reset Screeps грузит весь код
+// (десятки CPU на require, до 500 CPU в этом тике разрешено) - этот спайк не имеет
+// отношения к steady-state нагрузке. Пропускаем сэмпл, иначе он якорит EMA на сотни
+// тиков. Reset происходит после деплоя, server-restart'а или эвикции VM.
+let cpuSkipNextSample = true;
+
 exports.measureCpu = function() {
+    if (cpuSkipNextSample) {
+        cpuSkipNextSample = false;
+        return;
+    }
     const value = Game.cpu.getUsed();
     let stats = Memory.cpu_stats;
-    if (!stats) {
-        Memory.cpu_stats = {ema: [value, value, value], samples: 1};
+    // v=2: миграция со старого формата без skip-first-tick - там EMA уже отравлена
+    // спайком первого тика. Сбрасываем чтобы перенакопить с корректных сэмплов.
+    if (!stats || stats.v !== 2) {
+        Memory.cpu_stats = {ema: [value, value, value], samples: 1, v: 2};
         return;
     }
     for (let i = 0; i < CPU_WINDOWS.length; i++) {

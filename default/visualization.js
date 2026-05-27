@@ -69,6 +69,39 @@ function formatRate(v) {
     return sign + Math.round(v);
 }
 
+// CPU EWMA - аналог top'овского load average. Game.cpu.getUsed() для текущего тика
+// дёшев (~0.001 CPU), поэтому сэмплируем КАЖДЫЙ тик в отличие от energy. measureCpu()
+// вызывается из main.js в самом конце loop(), чтобы зацепить полный тик включая
+// per-creep run-петлю (она идёт ПОСЛЕ visualization.process).
+const CPU_WINDOWS = [
+    {tau:   300, label: '300t',  warmup:   10},  // ~15 мин - спайки
+    {tau:  3000, label: '3kt',   warmup:  100},  // ~2.5ч - режим
+    {tau: 30000, label: '30kt',  warmup: 1000},  // ~25ч - тренд
+];
+
+exports.measureCpu = function() {
+    const value = Game.cpu.getUsed();
+    let stats = Memory.cpu_stats;
+    if (!stats) {
+        Memory.cpu_stats = {ema: [value, value, value], samples: 1};
+        return;
+    }
+    for (let i = 0; i < CPU_WINDOWS.length; i++) {
+        const alpha = 1 - Math.exp(-1 / CPU_WINDOWS[i].tau);
+        stats.ema[i] = alpha * value + (1 - alpha) * stats.ema[i];
+    }
+    stats.samples += 1;
+}
+
+function formatCpu(v) {
+    return String(Math.round(v));
+}
+
+function formatBucket(v) {
+    if (v >= 1000) return Math.round(v / 1000) + 'k';
+    return String(Math.round(v));
+}
+
 // World-координаты для имени комнаты вида W11S39 / E5N3. Комнаты на сетке 50×50.
 // W-комнаты идут в отрицательную сторону: W0 = [-50..-1], W1 = [-100..-51] и т.д.
 // N-комнаты аналогично для y.
@@ -372,6 +405,22 @@ visualiseMap = function(room) {
         }
     }
     Game.map.visual.text(energyParts.join(' '), new RoomPosition(0, 16, room.name), {align: 'left', fontSize: 6});
+
+    // CPU EWMA - глобальная метрика, но рендерим в каждой нашей комнате (как energy stats).
+    // Формат: ⚙ <300t> <3kt> <30kt> b<bucket>. Bucket красный когда < 3000 - индикатор
+    // что бот проедает буфер.
+    const cpuStats = Memory.cpu_stats;
+    const cpuParts = ['⚙'];
+    if (cpuStats) {
+        for (let i = 0; i < CPU_WINDOWS.length; i++) {
+            cpuParts.push(cpuStats.samples >= CPU_WINDOWS[i].warmup ? formatCpu(cpuStats.ema[i]) : '—');
+        }
+    } else {
+        cpuParts.push('—', '—', '—');
+    }
+    cpuParts.push('b' + formatBucket(Game.cpu.bucket));
+    const cpuColor = Game.cpu.bucket < 3000 ? '#ff6666' : '#ffffff';
+    Game.map.visual.text(cpuParts.join(' '), new RoomPosition(0, 22, room.name), {align: 'left', fontSize: 6, color: cpuColor});
 
     // Defending indicator - аналог nuker'а: иконка слева от ☢, цветом отличаем состояние.
     // Красный = под атакой, зелёный = мир. Символ без FE0F (text-presentation), чтобы color

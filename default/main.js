@@ -225,6 +225,9 @@ loop = function () {
         if (!pc.ticksToLive) continue;  // ещё не задеплоен.
         roleOperator.run(pc);
     } catch (err) { err.log() };
+
+    // CPU sample в самом конце - захватываем полный тик (modules + per-room + per-creep + powerCreeps).
+    try { visualization.measureCpu(); } catch (err) { err.log() };
 }
 
 module.exports.loop = function() {

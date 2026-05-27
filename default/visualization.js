@@ -206,10 +206,17 @@ function buildHeavyRoomVisuals(room) {
 }
 
 visualiseRoom = function(room) {
-    if (!statuses.hasOwnProperty(room.name) && room.controller) {
-        statuses[room.name] = {
-            start: Game.time,
-            progress: room.controller.progress,
+    // Resetтим baseline progress'а при инициализации или после level-up: на level-up'е
+    // progress прыгает к 0 (новое значение progressTotal), и без reset'а progressDelta
+    // становится отрицательным (новый_малый - старый_большой) - E/t показывает минус.
+    if (room.controller) {
+        const s = statuses[room.name];
+        if (!s || s.level !== room.controller.level) {
+            statuses[room.name] = {
+                start: Game.time,
+                progress: room.controller.progress,
+                level: room.controller.level,
+            };
         }
     }
 

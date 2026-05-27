@@ -63,6 +63,20 @@ if (Memory.profiler_enabled) {
 }
 
 
+// Цепочка спавна: порядок load-bearing, см. CLAUDE.md / spawnCreeps. Каждая функция
+// возвращает false ("я только что заспавнила, дальше не идём") или true ("мне ничего
+// не нужно, передавай дальше"). Менять порядок - ломать bootstrap.
+const SPAWN_CHAIN = [
+    roleMiner.spawn,
+    roleCharger.spawn,
+    roleRampartDefender.spawn,
+    // roleDefender.spawn,
+    roleUpgrader.spawn,
+    roleExtractor.spawn,
+    roleReserver.spawn,
+    roleHarvester.autoSpawn,
+];
+
 function spawnCreeps(room) {
     if (!room.controller || !room.controller.my) {
         return;
@@ -73,15 +87,33 @@ function spawnCreeps(room) {
     // visualization ничего не покажет.
     delete room.memory.spawn_need;
 
-    if (!roleMiner.spawn(room)) return;
-    if (!roleCharger.spawn(room)) return;
-    if (!roleRampartDefender.spawn(room)) return;
-    // if (!roleDefender.spawn(room)) return;
-    if (!roleUpgrader.spawn(room)) return;
-    if (!roleExtractor.spawn(room)) return;
-    if (!roleReserver.spawn(room)) return;
-    if (!roleHarvester.autoSpawn(room)) return;
+    for (const spawn of SPAWN_CHAIN) {
+        if (!spawn(room)) return;
+    }
 }
+
+// Dispatch-таблица по memory.role. Ключи = exact string в creep.memory.role
+// (см. spawnCreep options в роли). Неизвестная роль -> creep.say('Err role').
+const ROLE_RUN = {
+    scout:                roleScout.run,
+    claimer:              roleClaimer.run,
+    charger:              roleCharger.run,
+    upgrader:             roleUpgrader.run,
+    remote_upgrader:      roleRemoteUpgrader.run,
+    controller_upgrader:  roleControllerUpgrader.run,
+    rampart_defender:     roleRampartDefender.run,
+    warrior:              roleWarrior.run,
+    defender:             roleDefender.run,
+    miner:                roleMiner.run,
+    harvester:            roleHarvester.run,
+    reserver:             roleReserver.run,
+    extractor:            roleExtractor.run,
+    safe_mode_generator:  roleSafeModeGenerator.run,
+    wall_breaker:         roleWallBreaker.run,
+    powerBankAttacker:    rolePowerBankAttacker.run,
+    powerBankHealer:      rolePowerBankHealer.run,
+    powerCarrier:         rolePowerCarrier.run,
+};
 
 function upgradeCreeps(room) {
     if (!roleCharger.upgrade(room)) return;
@@ -179,80 +211,11 @@ loop = function () {
         if (taskCreep.checkRecycling(creep) == OK) continue; // Если есть команда на переработку.
         // if (creep.memory.configuration_id) continue; // Если крип находится в конфигурации
 
-        switch (creep.memory.role){
-            case 'scout':
-                roleScout.run(creep);
-                break;
-
-            case 'claimer':
-                roleClaimer.run(creep);
-                break;
-
-            case 'charger':
-                roleCharger.run(creep);
-                break;
-
-            case 'upgrader':
-                roleUpgrader.run(creep);
-                break;
-
-            case 'remote_upgrader':
-                roleRemoteUpgrader.run(creep);
-                break;
-
-            case 'controller_upgrader':
-                roleControllerUpgrader.run(creep);
-                break;
-
-            case 'rampart_defender':
-                roleRampartDefender.run(creep);
-                break;
-            case 'warrior':
-                roleWarrior.run(creep);
-                break;
-
-            case 'defender':
-                roleDefender.run(creep);
-                break;
-
-            case 'miner':
-                roleMiner.run(creep);
-                break;
-
-            case 'harvester':
-                roleHarvester.run(creep);
-                break;
-
-            case 'reserver':
-                roleReserver.run(creep);
-                break;
-
-            case 'extractor':
-                roleExtractor.run(creep);
-                break;
-
-            case 'safe_mode_generator':
-                roleSafeModeGenerator.run(creep);
-                break;
-
-            case 'wall_breaker':
-                roleWallBreaker.run(creep);
-                break;
-
-            case 'powerBankAttacker':
-                rolePowerBankAttacker.run(creep);
-                break;
-
-            case 'powerBankHealer':
-                rolePowerBankHealer.run(creep);
-                break;
-
-            case 'powerCarrier':
-                rolePowerCarrier.run(creep);
-                break;
-
-            default:
-                creep.say('Err role');
+        const run = ROLE_RUN[creep.memory.role];
+        if (run) {
+            run(creep);
+        } else {
+            creep.say('Err role');
         }
     } catch(err) { err.log() };
 

@@ -78,26 +78,18 @@ const roleRampartDefender = {
             });
         }
 
-        const target = (() => {
-            // Сначала хилеры - они нейтрализуют наш урон, без них остальные крипы умрут быстрее.
-            let enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == HEAL)});
-            if (enemy) {
-                creep.memory.attack_id = enemy.id;
-                return enemy;
-            }
-            // Затем работяги, они грызут стены.
-            enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == WORK)});
-            if (enemy) {
-                creep.memory.attack_id = enemy.id;
-                return enemy;
-            }
-            // Любые остальные с боевыми частями.
-            enemy = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS, {filter: (c) => _.some(c.body, body => body.type == RANGED_ATTACK || body.type == ATTACK)});
-            if (enemy) {
-                creep.memory.attack_id = enemy.id;
-                return enemy;
-            }
-        })();
+        // Один find на 3 приоритета (хилеры > работяги > боевые) вместо трёх отдельных:
+        // под атакой защитников бывает 2-3, каждый защитник сканировал комнату 3 раза за тик.
+        // findClosestByRange(array) на уже отфильтрованной подмножестве не делает нового find.
+        const allHostiles = creep.room.find(FIND_HOSTILE_CREEPS);
+        const closestWithPart = (...parts) => {
+            const subset = allHostiles.filter(c => c.body.some(b => parts.includes(b.type)));
+            return subset.length ? creep.pos.findClosestByRange(subset) : null;
+        };
+        const target = closestWithPart(HEAL)
+                    || closestWithPart(WORK)
+                    || closestWithPart(RANGED_ATTACK, ATTACK);
+        if (target) creep.memory.attack_id = target.id;
 
         // Перевыбираем rampart только при наличии цели - без неё getRangeTo даст NaN и сравнение сломается.
         if (target) {

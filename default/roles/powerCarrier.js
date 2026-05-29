@@ -32,7 +32,7 @@ const roleCarrier = {
         // status === 'looting' - идём за дропом.
         if (creep.room.name !== bank.roomName) {
             creep.moveTo(new RoomPosition(bank.x, bank.y, bank.roomName), {
-                reusePath: 10,
+                reusePath: 30,
                 visualizePathStyle: {stroke: '#ffaa00', lineStyle: 'dashed'},
             });
             return;
@@ -75,7 +75,7 @@ const roleCarrier = {
 
 function returnHome(creep) {
     if (creep.room.name !== creep.memory.home_room) {
-        creep.moveTo(new RoomPosition(25, 25, creep.memory.home_room), {reusePath: 10});
+        creep.moveTo(new RoomPosition(25, 25, creep.memory.home_room), {reusePath: 30});
         return;
     }
     const room = Game.rooms[creep.memory.home_room];

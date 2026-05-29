@@ -152,7 +152,9 @@ const roleHarvester = {
             if (creep.room.name != homeRoom) {
                 creep.moveTo(new RoomPosition(targetEntry.x, targetEntry.y, targetEntry.roomName), {
                     ignoreCreeps: true,
-                    reusePath: 10,
+                    // Exit-точка статичная, путь cross-room. Каждый PathFinder.search на
+                    // многокомнатном маршруте 20-50 CPU - reusePath:30 даёт 3× меньше.
+                    reusePath: 30,
                 });
                 return;
             }
@@ -168,7 +170,7 @@ const roleHarvester = {
             // Едем в удалённую комнату через home_entry (точка выхода из home_room).
             if (creep.room.name != targetRoom) {
                 creep.moveTo(new RoomPosition(homeEntry.x, homeEntry.y, homeEntry.roomName), {
-                    reusePath: 10,
+                    reusePath: 30,
                 });
                 return;
             }

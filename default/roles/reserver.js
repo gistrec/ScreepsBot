@@ -86,7 +86,7 @@ const roleReserver = {
         if (isHostile) {
             const status = creep.attackController(controller);
             if (status === ERR_NOT_IN_RANGE) {
-                creep.moveTo(controller, {reusePath: 10});
+                creep.moveTo(controller, {reusePath: 20});
             } else if (status === ERR_TIRED) {
                 creep.say(`⏳atk`);
             } else if (status !== OK) {

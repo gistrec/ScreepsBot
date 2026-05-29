@@ -76,9 +76,9 @@ const roleRemoteUpgrader = {
         // pathfinding в moveTo), без флага - целимся в центр комнаты как best-effort.
         if (creep.room.name != targetRoom) {
             if (expand) {
-                creep.moveTo(expand, {reusePath: 10});
+                creep.moveTo(expand, {reusePath: 30});
             } else {
-                creep.moveTo(new RoomPosition(25, 25, targetRoom), {reusePath: 10});
+                creep.moveTo(new RoomPosition(25, 25, targetRoom), {reusePath: 30});
             }
             return;
         }

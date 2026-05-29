@@ -62,7 +62,9 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
             creep.moveTo(target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
-
+                // Цель стационарная (spawn/extension/tower/storage/etc), безопасно держать
+                // путь 15 тиков вместо дефолтных 5 - 3× меньше PathFinder.search вызовов.
+                reusePath: 15,
                 maxRooms: 1
             });
             return OK;
@@ -337,6 +339,10 @@ exports.pickupTarget = function(creep, target) {
             creep.moveTo(target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
+                // Pickup-цель (dropped resource) decay'ится но не двигается. reusePath:5
+                // - конкретно для дропа риск что он испарится; 5 тиков ≈ 250 единиц decay,
+                // приемлемо. Длиннее не делаем чтобы не идти к исчезнувшему дропу.
+                reusePath: 5,
                 maxRooms: 1,
             });
             return OK;
@@ -388,6 +394,8 @@ exports.harvestTarget = function(creep, target) {
             const result = creep.moveTo(target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#ffffff' },
+                // Source стационарен, путь к нему статичен. 3× меньше PathFinder вызовов.
+                reusePath: 15,
                 maxRooms: 1,
             });
             return OK;
@@ -441,6 +449,8 @@ exports.withdrawTarget = function(creep, target, resourceType = RESOURCE_ENERGY,
             creep.moveTo(target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
+                // Withdraw-цель стационарна (storage/terminal/container/link).
+                reusePath: 15,
                 maxRooms: 1,
             });
             return OK;

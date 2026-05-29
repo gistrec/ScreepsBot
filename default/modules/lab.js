@@ -94,7 +94,12 @@ const DEFAULT_LAB_STUCK_EVAC_DELAY = 500;
 // пропускать их в runReaction/forceEvacuateLabs, иначе runReaction дампит boost-минерал
 // сразу после того как чарджер его залил. Реквизит - creep.memory.boost_force=true и
 // creep.memory.lab_id указывает на target-лабу.
+// Кешируем по тику: каждый из 5 лаб-комнат зовёт это в runReaction, ещё раз
+// в forceEvacuateLabs - иначе 10+ пробегов по Game.creeps (~100 крипов) на тик.
+let boostReservedCache = {tick: -1, ids: null};
+
 function getBoostReservedLabIds() {
+    if (boostReservedCache.tick === Game.time) return boostReservedCache.ids;
     const ids = new Set();
     for (const name in Game.creeps) {
         const c = Game.creeps[name];
@@ -102,6 +107,7 @@ function getBoostReservedLabIds() {
             ids.add(c.memory.lab_id);
         }
     }
+    boostReservedCache = {tick: Game.time, ids};
     return ids;
 }
 

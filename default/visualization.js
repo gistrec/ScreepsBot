@@ -748,7 +748,16 @@ function visualisePowerBankRoomStats() {
     }
 }
 
+// При просадке буфера лучше не рендерить визуал чем уйти в principal-overrun.
+// Visualization это 1-3 CPU/тик чистой косметики - при <3000 bucket'е критичнее
+// дать обычной логике (defend/spawn) запас. Override через Memory.viz_min_bucket=0
+// чтобы отключить gate (например при отладке).
+const DEFAULT_VIZ_MIN_BUCKET = 3000;
+
 exports.process = function() {
+    const minBucket = Memory.viz_min_bucket !== undefined ? Memory.viz_min_bucket : DEFAULT_VIZ_MIN_BUCKET;
+    if (Game.cpu.bucket < minBucket) return;
+
     for (const roomName in Game.rooms) {
         const room = Game.rooms[roomName];
 

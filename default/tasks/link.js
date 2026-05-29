@@ -10,7 +10,7 @@ function getLinkConfig(room) {
         const links = utils.getMyStructuresByType(r)[STRUCTURE_LINK] || [];
         if (links.length === 0) return null;
 
-        const sources = r.find(FIND_SOURCES);
+        const sources = utils.getSources(r);
         const sourceLinks = links.filter(l => sources.some(s => l.pos.inRangeTo(s, 2)));
         const targetLinks = links.filter(l => !sourceLinks.includes(l));
 

@@ -1,4 +1,5 @@
 const profiler = require('../screeps-profiler');
+const utils = require('../utils');
 
 // TODO: Check link near source
 
@@ -181,7 +182,7 @@ function buildContainersNearSources(room) {
     const spawn = room.find(FIND_MY_SPAWNS).shift();
     if (!spawn && !room.storage) return;
 
-    const sources = room.find(FIND_SOURCES);
+    const sources = utils.getSources(room);
     const terrain = room.getTerrain();
     const target = room.storage || spawn;
 

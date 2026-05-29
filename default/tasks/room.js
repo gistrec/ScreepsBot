@@ -32,7 +32,7 @@ exports.recalculateCostMatrixRewrites = function(room) {
         const rectangleArea = getRectangleArea(importantStructure.pos, 20, /* rewriteCenter */ false)
         costMatrixRewrites[room.name] = costMatrixRewrites[room.name].concat(rectangleArea);
     }
-    const sources    = room.find(FIND_SOURCES);
+    const sources    = utils.getSources(room);
     const containers = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_CONTAINER});
     for (const container of containers) {
         for (const source of sources) {

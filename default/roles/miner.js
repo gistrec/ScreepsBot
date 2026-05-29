@@ -54,7 +54,7 @@ const roleMiner = {
         // миннера на 2-source-комнате полезны. Для 1-source комнаты удвоение бесполезно:
         // source всё равно bottleneck, 2 миннера на одном источнике не дают двойного
         // throughput, а спавн 2×250e впустую.
-        const roomSources = room.find(FIND_SOURCES);
+        const roomSources = utils.getSources(room);
         const sourcesCount = (room.energyCapacityAvailable < 550 && roomSources.length > 1)
             ? 2 * roomSources.length
             : roomSources.length;

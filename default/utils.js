@@ -91,6 +91,14 @@ exports.getMyStructuresByType = function(room) {
         r => _.groupBy(r.find(FIND_MY_STRUCTURES), 'structureType'));
 };
 
+// FIND_SOURCES детерминирован для комнаты на всё время её существования. Кешируем не
+// потому что find дорогой (он не дорогой), а потому что зовётся 8+ раз/тик в разных
+// модулях (sources.get, link.getLinkConfig, needsChargers, miner.spawn, tasks/room,
+// modules/build, visualization). Один find/тик/комнату.
+exports.getSources = function(room) {
+    return room.cache('sources', r => r.find(FIND_SOURCES));
+};
+
 // Нужны ли чарджеры в комнате прямо сейчас. На bootstrap'е RCL 1 (миннер 250e с CARRY,
 // без storage/контейнера/линка) чарджер ничего не возит - миннер сам доставляет в спавн.
 // Спавн чарджера в этом состоянии = слитые 300 энергии и idle-крип у спавна. Как только
@@ -104,7 +112,7 @@ exports.needsChargers = function(room) {
         if ((byType[STRUCTURE_LINK] || []).length > 0) return true;
 
         // Контейнер у любого source - чарджер забирает в storage/spawn.
-        const sources = r.find(FIND_SOURCES);
+        const sources = exports.getSources(r);
         const containers = byType[STRUCTURE_CONTAINER] || [];
         for (const s of sources) {
             if (containers.some(c => c.pos.isNearTo(s))) return true;

@@ -15,7 +15,7 @@ exports.get = function(creep, force = false) {
 
     // Если source ещё не назначен (или ссылка протухла) - выбираем.
     if (!source) {
-        const roomSources = creep.room.find(FIND_SOURCES);
+        const roomSources = utils.getSources(creep.room);
         if (roomSources.length == 0) {
             return;
         }

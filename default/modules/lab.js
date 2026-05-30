@@ -307,6 +307,26 @@ exports.refillLabs = function(room) {
     const [source1, source2] = cfg.sources;
     const [resource1, resource2] = cfg.resources;
 
+    // Source-лаба с чужим минералом - её нельзя refill'ить (transfer→ERR_INVALID_TARGET),
+    // и без эвакуации она зависнет навсегда. Случается после смены labResources в конфиге
+    // или ручного transfer'а в лабу. Эвакуируем как обычные target-лабы в runReaction.
+    for (const [sourceLab, expectedResource] of [[source1, resource1], [source2, resource2]]) {
+        if (!sourceLab.mineralType) continue;
+        if (sourceLab.mineralType === expectedResource) continue;
+        if (sourceLab.store.getUsedCapacity(sourceLab.mineralType) === 0) continue;
+
+        const dump = (room.terminal && room.terminal.store.getFreeCapacity() > 0)
+            ? room.terminal
+            : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
+        if (!dump) {
+            console.log(`[${room.name}][LAB] Source lab ${sourceLab.id} has ${sourceLab.mineralType} (expected ${expectedResource}), но дамп некуда`);
+            continue;
+        }
+        console.log(`[${room.name}][LAB] Evacuating ${sourceLab.mineralType} from source lab ${sourceLab.id} (expected ${expectedResource})`);
+        room.transfer(sourceLab.mineralType, sourceLab.id, dump.id);
+        return; // 1 transfer task на вызов - дадим чарджеру время.
+    }
+
     // Не заливаем под завязку: 1500 хватит на ~30 циклов реакций, но не блокирует ценные ресурсы.
     const REFILL_TARGET = 1500;
 

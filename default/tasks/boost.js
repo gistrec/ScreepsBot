@@ -100,6 +100,12 @@ exports.hasBoost = function(creep, resourceType) {
 exports.checkBoost = function(creep) {
     if (!creep.memory.boost && creep.memory.boost_queue) {
         creep.memory.boost = creep.memory.boost_queue.shift();
+        // shift() мутировал массив до []. Сам по себе [] не вреден, но он остаётся
+        // truthy и `!creep.memory.boost && creep.memory.boost_queue` срабатывает каждый
+        // тик пустого shift возвращая undefined. Чистим - заодно memory dump чище.
+        if (creep.memory.boost_queue.length === 0) {
+            delete creep.memory.boost_queue;
+        }
     }
 
     if (!creep.memory.boost) {

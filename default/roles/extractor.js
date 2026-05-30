@@ -19,6 +19,9 @@ const roleExtractor = {
 
         // Не спавним, если в комнате временно закончились минералы
         const mineral = Game.getObjectById(mineralId);
+        // mineralId был валиден на момент room.getMineral() (видна комната), но если этот
+        // тик мы потеряли видимость - getObjectById вернёт null. Не спавним, проверим позже.
+        if (!mineral) return true;
         if (mineral.mineralAmount == 0) return; // No need to spawn
 
         // Не спавним, если в хранилищах слишком много минералов
@@ -80,6 +83,13 @@ const roleExtractor = {
             if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return;
         } else {
             const mineral = Game.getObjectById(creep.memory.mineral_id);
+            // Mineral может быть невидим если креп ушёл в комнату без vision'а (не должно
+            // происходить - extractor живёт в своей комнате - но при downgrade/смене claim'а
+            // возможно). Без null-check creep.suicide отсюда правильнее чем TypeError на следующей строке.
+            if (!mineral) {
+                creep.suicide();
+                return;
+            }
             if (!mineral.mineralAmount) {
                 creep.suicide();
                 return;

@@ -8,11 +8,32 @@ function getEnergyCapacityAvailable(room, spawn = null) {
     const chargers = exports.creepsByRole(room, "charger");
 
     if (chargers.length >= 1 && miners.length >= 1) {
-        return room.energyCapacityAvailable;
+        return exports.getEffectiveEnergyCapacity(room);
     } else {
         return room.energyAvailable;
     }
 }
+
+// room.energyCapacityAvailable от Screeps учитывает ВСЕ построенные spawn/extension,
+// включая inactive (когда построено больше чем разрешает RCL, или после downgrade'а).
+// Это завышает оценку и getAvailableCreepConfiguration выбирает тело которое спавн
+// никогда не сможет собрать - спавн фейлится с ERR_NOT_ENOUGH_ENERGY. Считаем
+// руками через CONTROLLER_STRUCTURES limits + EXTENSION_ENERGY_CAPACITY на текущий RCL.
+exports.getEffectiveEnergyCapacity = function(room) {
+    return room.cache('effectiveEnergyCapacity', r => {
+        const level = r.controller ? r.controller.level : 0;
+        if (level === 0) return 0;
+        const byType = exports.getMyStructuresByType(r);
+        const builtSpawns = (byType[STRUCTURE_SPAWN] || []).length;
+        const builtExts   = (byType[STRUCTURE_EXTENSION] || []).length;
+        const allowedSpawns = CONTROLLER_STRUCTURES[STRUCTURE_SPAWN][level] || 0;
+        const allowedExts   = CONTROLLER_STRUCTURES[STRUCTURE_EXTENSION][level] || 0;
+        const activeSpawns = Math.min(builtSpawns, allowedSpawns);
+        const activeExts   = Math.min(builtExts, allowedExts);
+        return activeSpawns * SPAWN_ENERGY_CAPACITY
+             + activeExts * EXTENSION_ENERGY_CAPACITY[level];
+    });
+};
 
 // TODO: Check miner and charger exists - we can't spawn creep without energy in estansion!
 exports.getAvailableCreepConfiguration = function(configurations, room) {

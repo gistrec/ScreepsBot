@@ -55,11 +55,7 @@ const roleExtractor = {
             MOVE,  MOVE,  MOVE,  MOVE,  MOVE,
             CARRY, CARRY, CARRY, CARRY, CARRY,
         ];
-        spawn.spawnCreep(parts, name, {memory: { role, mineral_id, extractor_id }, energyStructures: [
-            // Сначала выкачиваем энергию из экстеншенов.
-            ...room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_EXTENSION}),
-            spawn
-        ]});
+        spawn.spawnCreep(parts, name, {memory: { role, mineral_id, extractor_id }, energyStructures: utils.getEnergyStructures(room, spawn)});
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         // Не пытаемся спавнить других крипов в этот тик

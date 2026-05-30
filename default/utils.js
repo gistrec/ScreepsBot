@@ -17,21 +17,18 @@ function getEnergyCapacityAvailable(room, spawn = null) {
 // room.energyCapacityAvailable от Screeps учитывает ВСЕ построенные spawn/extension,
 // включая inactive (когда построено больше чем разрешает RCL, или после downgrade'а).
 // Это завышает оценку и getAvailableCreepConfiguration выбирает тело которое спавн
-// никогда не сможет собрать - спавн фейлится с ERR_NOT_ENOUGH_ENERGY. Считаем
-// руками через CONTROLLER_STRUCTURES limits + EXTENSION_ENERGY_CAPACITY на текущий RCL.
+// никогда не сможет собрать. Суммируем capacity только активных структур через
+// isActive() - авторитетный API Screeps'а. Per-tick кеш на room: ~60 isActive()
+// вызовов на комнату за тик ровно один раз.
 exports.getEffectiveEnergyCapacity = function(room) {
     return room.cache('effectiveEnergyCapacity', r => {
-        const level = r.controller ? r.controller.level : 0;
-        if (level === 0) return 0;
         const byType = exports.getMyStructuresByType(r);
-        const builtSpawns = (byType[STRUCTURE_SPAWN] || []).length;
-        const builtExts   = (byType[STRUCTURE_EXTENSION] || []).length;
-        const allowedSpawns = CONTROLLER_STRUCTURES[STRUCTURE_SPAWN][level] || 0;
-        const allowedExts   = CONTROLLER_STRUCTURES[STRUCTURE_EXTENSION][level] || 0;
-        const activeSpawns = Math.min(builtSpawns, allowedSpawns);
-        const activeExts   = Math.min(builtExts, allowedExts);
-        return activeSpawns * SPAWN_ENERGY_CAPACITY
-             + activeExts * EXTENSION_ENERGY_CAPACITY[level];
+        const candidates = (byType[STRUCTURE_SPAWN] || []).concat(byType[STRUCTURE_EXTENSION] || []);
+        let cap = 0;
+        for (const s of candidates) {
+            if (s.isActive()) cap += s.store.getCapacity(RESOURCE_ENERGY);
+        }
+        return cap;
     });
 };
 

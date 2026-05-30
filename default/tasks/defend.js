@@ -189,9 +189,11 @@ exports.updateDefender = function(room) {
     });
     const defenders = _.filter(creeps, (creep) => creep.memory.defender);
 
-    // Если нет защитника, но есть крипы
+    // Если нет защитника, но есть крипы. Math.random()*N даёт [0,N), Math.floor → [0,N-1].
+    // Прежний `* (creeps.length - 1)` исключал последнего чарджера: при 2 чарджерах второй
+    // никогда не становился defender'ом.
     if (creeps.length && !defenders.length) {
-        const index = Math.floor(Math.random() * (creeps.length - 1))
+        const index = Math.floor(Math.random() * creeps.length);
         creeps[index].memory.defender = true;
     }
     // Если больше одного защитника, убираем всех, кроме одного

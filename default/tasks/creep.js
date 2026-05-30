@@ -64,7 +64,14 @@ exports.checkTTL = function(creep) {
                 });
             }
         }
-        creep.transfer(spawn, RESOURCE_ENERGY);
+        // transfer только когда есть смысл: рядом со спавном, есть энергия, в спавне есть
+        // место. Иначе бесполезно тратили intent-slot каждый тик renew'а на гарантированные
+        // ERR_NOT_IN_RANGE/ERR_NOT_ENOUGH_RESOURCES/ERR_FULL.
+        if (creep.pos.isNearTo(spawn)
+            && creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0
+            && spawn.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+            creep.transfer(spawn, RESOURCE_ENERGY);
+        }
         return OK;
 
     }

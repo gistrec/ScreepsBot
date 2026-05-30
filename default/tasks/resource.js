@@ -47,6 +47,11 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
         }
 
         for(const resourceType in creep.store) {
+            // getFreeCapacity возвращает null если структура не принимает этот ресурс
+            // (lab с другим mineralType, spawn/ext/tower с минералом). Пропускаем -
+            // иначе transfer вернёт ERR_INVALID_TARGET и вся цепочка fill упадёт.
+            const free = target.store.getFreeCapacity(resourceType);
+            if (free === null || free === 0) continue;
             const status = creep.transfer(target, resourceType);
             if (status != OK) return status;
         }

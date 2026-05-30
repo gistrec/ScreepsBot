@@ -564,8 +564,20 @@ exports.transferResource = function(creep) {
         return OK;
     }
 
+    // Target не принимает этот ресурс (getFreeCapacity === null, например лаба с
+    // mineralType=X получила задачу на Y) - удаляем задачу, иначе fillTarget будет
+    // спамить ERR_INVALID_TARGET каждый тик. null == 0 в JS равно false из-за
+    // type-coercion правил (null loosely equals только undefined), поэтому
+    // старый чек "== 0" этот случай не ловил.
+    const freeCap = target.store.getFreeCapacity(resource_type);
+    if (freeCap === null) {
+        console.log(`[${creep.room.name}] ${target.structureType} ${target.id} rejects resource ${resource_type}. Task was deleted.`);
+        delete creep.memory.transfer;
+        return OK;
+    }
+
     // Если некуда класть - выгружаем ресурсы и удаляем задачу.
-    if (target.store.getFreeCapacity(resource_type) == 0) {
+    if (freeCap == 0) {
         if (creep.store.getUsedCapacity() != 0) {
             creep.say(`Remove extra resource`);
             exports.fillClosestStructure(creep, STRUCTURE_TERMINAL);

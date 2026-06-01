@@ -85,6 +85,89 @@ const rooms = exports.rooms = {
     }
 };
 
+// Планировщик цепочки реакций для нового продукта. Зови из консоли:
+// `require('modules_lab').planPipeline('XUH2O')`. Раскладывает target в дерево
+// реакций (через REACTIONS константу), помечает что уже работает / что mining'ится /
+// что отсутствует. Для каждой missing-реакции предлагает host-комнату с минимальной
+// linear distance до источников input'ов - чем ближе, тем дешевле transaction cost
+// терминала. Кандидаты - owned rooms без активной реакции в labResources.
+exports.planPipeline = function(target) {
+    // 1. Reverse-индекс: product -> [input1, input2].
+    const inputsOf = {};
+    for (const a in REACTIONS) {
+        for (const b in REACTIONS[a]) {
+            inputsOf[REACTIONS[a][b]] = [a, b];
+        }
+    }
+
+    // 2. Кто что добывает / производит.
+    const minedIn    = {};  // mineral -> [roomName]
+    const producedIn = {};  // product -> roomName
+    for (const name in rooms) {
+        const m = rooms[name].mineral;
+        if (m) (minedIn[m] = minedIn[m] || []).push(name);
+    }
+    for (const name in labResources) {
+        const [r1, r2] = labResources[name];
+        const p = REACTIONS[r1] && REACTIONS[r1][r2];
+        if (p) producedIn[p] = name;
+    }
+
+    // 3. Предложение host'а для отсутствующей реакции: candidate = owned-комната
+    // без активной реакции; минимизируем sum(linear distance) до источников inputs.
+    const candidateHosts = Object.keys(rooms).filter(r => !labResources[r]);
+    function suggestHost(inputs) {
+        const sources = inputs.map(i => producedIn[i] || (minedIn[i] && minedIn[i][0]));
+        if (sources.some(s => !s) || candidateHosts.length === 0) return null;
+        let best = null, bestDist = Infinity;
+        for (const c of candidateHosts) {
+            const d = sources.reduce((s, src) => s + Game.map.getRoomLinearDistance(c, src), 0);
+            if (d < bestDist) { bestDist = d; best = c; }
+        }
+        return best ? `${best} (dist=${bestDist})` : null;
+    }
+
+    // 4. Рекурсивный обход цепочки.
+    const missing = [];
+    const lines = [`[planPipeline] ${target}:`];
+    function walk(product, depth) {
+        const indent = '  '.repeat(depth);
+        const inputs = inputsOf[product];
+        if (!inputs) {
+            const mines = minedIn[product] || [];
+            const tag = mines.length ? `mined in ${mines.join(', ')}` : 'NOT MINED';
+            lines.push(`${indent}${mines.length ? '+' : '!'} ${product} (raw) - ${tag}`);
+            return;
+        }
+        const [a, b] = inputs;
+        const room = producedIn[product];
+        if (room) {
+            lines.push(`${indent}+ ${product} = ${a} + ${b}  [in ${room}]`);
+        } else {
+            const host = suggestHost([a, b]);
+            const hint = host ? `, suggest host: ${host}` : ', no free host';
+            lines.push(`${indent}! ${product} = ${a} + ${b}  [MISSING${hint}]`);
+            missing.push({product, inputs: [a, b], host});
+        }
+        walk(a, depth + 1);
+        walk(b, depth + 1);
+    }
+    walk(target, 0);
+
+    lines.push('');
+    if (missing.length) {
+        lines.push(`Missing: ${missing.length} reaction(s)`);
+        for (const m of missing) {
+            lines.push(`  ${m.product} = ${m.inputs.join(' + ')}${m.host ? ` → ${m.host}` : ''}`);
+        }
+    } else {
+        lines.push('All reactions in place.');
+    }
+
+    console.log(lines.join('\n'));
+    return missing;
+};
+
 // Шаги:
 // 1. Получаем T1 минералы в комнатах.
 // 2. Вычисляем какие минералы можно забустить.

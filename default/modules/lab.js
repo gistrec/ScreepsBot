@@ -10,7 +10,9 @@ const labResources = exports.labResources = {
     "W9S39":  ["LH", "OH"],
     "W8S36":  ["X",  "LH2O"],
     "W11S39": ["L",  "H"],
-    "W12S39": ["Z",  "H"],
+    "W12S37": ["U",  "H"],     // → UH; U из W13S37 (соседняя), H локально
+    "W13S37": ["UH", "OH"],    // → UH2O; UH из W12S37, OH из W9S37
+    "W12S39": ["X",  "UH2O"],  // → XUH2O; X из W8S36, UH2O из W13S37 (был Z+H→ZH, ZH никем не consume'ился)
 };
 
 // Авто-определение ролей лаб. Source-лаба обязана быть в range 2 от ВСЕХ остальных
@@ -68,16 +70,18 @@ const rooms = exports.rooms = {
     },
     "W12S39": {
         "mineral": "Z",
-        "require": ["Z", "H"],
-        "produce": "ZH",
+        "require": ["X", "UH2O"],
+        "produce": "XUH2O",
     },
     "W12S37": {
         "mineral": "H",
-        "require": [],
+        "require": ["U"],
+        "produce": "UH",
     },
     "W13S37": {
         "mineral": "U",
-        "require": [],
+        "require": ["UH", "OH"],
+        "produce": "UH2O",
     }
 };
 

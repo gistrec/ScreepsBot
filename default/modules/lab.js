@@ -74,6 +74,10 @@ const rooms = exports.rooms = {
     "W12S37": {
         "mineral": "H",
         "require": [],
+    },
+    "W13S37": {
+        "mineral": "U",
+        "require": [],
     }
 };
 

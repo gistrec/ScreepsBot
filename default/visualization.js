@@ -345,7 +345,7 @@ visualiseRoom = function(room) {
     updateEnergyEMA(room);
     const stats = room.memory.energy_stats;
     const totalE = room.getTotalEnergy();
-    const parts = [`🏦 ${formatEnergyCompact(totalE)}`];
+    const parts = [`🏦 ${formatEnergyCompact(totalE)}`, 'net e/t'];
     if (stats) {
         for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
             const w = ENERGY_WINDOWS[i];
@@ -411,7 +411,7 @@ visualiseMap = function(room) {
     // Компактная энерго-статистика: total + 3 окна EWMA без лейблов.
     // EMA уже посчитан в visualiseRoom (визуализация процессит rooms в порядке room->map).
     const stats = room.memory.energy_stats;
-    const energyParts = [`🏦${formatEnergyCompact(room.getTotalEnergy())}`];
+    const energyParts = [`🏦${formatEnergyCompact(room.getTotalEnergy())}`, 'net e/t'];
     if (stats) {
         for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
             energyParts.push(stats.samples >= ENERGY_WINDOWS[i].warmup ? formatRate(stats.ema[i]) : '—');

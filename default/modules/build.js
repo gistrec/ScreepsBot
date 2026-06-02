@@ -313,6 +313,18 @@ function buildExtractor(room) {
     room.createConstructionSite(mineral.pos, STRUCTURE_EXTRACTOR);
 }
 
+// Terrain-derived: кешируем по roomName на global. Terrain immutable в Screeps,
+// инвалидировать никогда не нужно. Global reset (после деплоя/restart'а) очистит
+// и пересчитает на первом обращении.
+const dangerSetCache = {};
+
+function getDangerSet(room) {
+    if (!dangerSetCache[room.name]) {
+        dangerSetCache[room.name] = computeDangerSet(room.getTerrain());
+    }
+    return dangerSetCache[room.name];
+}
+
 // Тайлы, на которые враг может либо встать, либо ударить ranged-attack'ом.
 // Stage 1: BFS от краёв комнаты через walkable - где enemy может физически стоять.
 // Stage 2: dilate на 3 клетки игнорируя стены - rangedAttack/rangedMassAttack бьют
@@ -390,7 +402,7 @@ function buildRamparts(room, spawn) {
     if (room.controller.level < 8) return;
 
     const terrain = room.getTerrain();
-    const danger = computeDangerSet(terrain);
+    const danger = getDangerSet(room);
     const SIZE = 13;
     const LAYERS = 3;
 

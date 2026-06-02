@@ -24,11 +24,12 @@ function ensureFactoryHasBatteries(room) {
     room.transfer(RESOURCE_BATTERY, "storage", "factory", 5000);
 }
 
-// Все три уровня считаются по ОДНОЙ метрике - getStoredEnergy() (storage+terminal+factory),
-// чтобы классы были взаимоисключающими и согласованными. Раньше veryRich считался по
-// суммарному запасу, а rich/poor - только по энергии в терминале, из-за чего комната могла
-// быть одновременно "очень богатой" и "бедной" (ей слали энергию, хотя склады забиты), а
-// veryRich-комната с терминалом 30-50k не попадала в richRooms и никогда не сжимала излишки.
+// rich/poor (донор/получатель) считаются по getTotalEnergy() - сырая энергия + батарейки×10
+// (storage+terminal+factory): батарейки разжимаются обратно, поэтому комната на батарейках
+// богатая и не должна выпрашивать энергию. veryRich (сжатие излишков) считается по сырой
+// энергии getStoredEnergy() - батарейки повторно не сжать. Единая метрика на класс держит
+// классы взаимоисключающими: раньше veryRich шёл по сумме, а rich/poor - по терминалу, и
+// комната могла быть одновременно "очень богатой" и "бедной".
 const POOR_STORED_ENERGY      = 50000;   // ниже - комнате нужна энергия
 const RICH_STORED_ENERGY      = 100000;  // выше - комната может делиться
 const VERY_RICH_STORED_ENERGY = 200000;  // выше - сжимаем излишки в батарейки
@@ -221,11 +222,14 @@ exports.balanceEnergy = function() {
             continue
         }
 
-        const stored = room.getStoredEnergy();
+        // Богатство для донор/получатель считаем с батарейками (их можно разжать/переслать),
+        // а сжатие излишков (veryRich) - только по сырой энергии: батарейки повторно не сжать.
+        const storedRaw = room.getStoredEnergy();
+        const stored = room.getTotalEnergy();
         const terminalEnergy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
         const terminalFree = room.terminal.store.getFreeCapacity();
 
-        if (stored > VERY_RICH_STORED_ENERGY) {
+        if (storedRaw > VERY_RICH_STORED_ENERGY) {
             veryRichRooms.push(room);
         }
 
@@ -250,7 +254,7 @@ exports.balanceEnergy = function() {
 
         // Беднейшие (по суммарному запасу) первыми.
         const sortedPoorRooms = poorRooms.slice().sort((a, b) => {
-            return a.getStoredEnergy() - b.getStoredEnergy();
+            return a.getTotalEnergy() - b.getTotalEnergy();
         });
         for (const poorRoom of sortedPoorRooms) {
             // Terminal has 10-tick cooldown after each send - only one send per rich room per tick.
@@ -377,9 +381,10 @@ exports.process = function() {
 }
 
 // Классификация по запасу энергии - та же метрика, что в balanceEnergy (донор/получатель).
-// Используется визуализацией для иконки богатая/бедная.
+// Считаем батарейки×10 (getTotalEnergy): они разжимаются обратно в энергию, поэтому комната
+// на батарейках по факту богатая. Используется визуализацией для иконки богатая/бедная.
 exports.classifyEnergy = function(room) {
-    const stored = room.getStoredEnergy();
+    const stored = room.getTotalEnergy();
     if (stored > RICH_STORED_ENERGY) return 'rich';
     if (stored < POOR_STORED_ENERGY) return 'poor';
     return 'neutral';

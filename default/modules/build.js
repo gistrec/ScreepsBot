@@ -229,6 +229,78 @@ function buildContainersNearSources(room) {
 }
 exports.buildContainersNearSources = buildContainersNearSources;
 
+// Source-link тоже динамический (зависит от позиций source-контейнеров). На RCL 5
+// доступно 2 линка, схема ставит только storage-link в (6,5) - второй слот нужен
+// для source. На RCL 6+ - оба source имеют свои линки. Ставим адъ. к контейнеру
+// (range 1 от контейнера = range ≤ 2 от source → miner.transferEnergy работает).
+// Делаем 1 site за вызов чтобы не плодить пачку конструкций одновременно.
+function buildLinksNearSources(room) {
+    if (room.controller.level < 5) return;
+    const allowed = CONTROLLER_STRUCTURES[STRUCTURE_LINK][room.controller.level];
+    if (!allowed) return;
+
+    const existingLinks = utils.getMyStructuresByType(room)[STRUCTURE_LINK] || [];
+    const existingSites = room.find(FIND_CONSTRUCTION_SITES, {
+        filter: s => s.structureType === STRUCTURE_LINK,
+    });
+    if (existingLinks.length + existingSites.length >= allowed) return;
+
+    const sources = utils.getSources(room);
+    const anchor  = room.storage || room.find(FIND_MY_SPAWNS).shift();
+    if (!anchor) return;
+
+    // Сорсы с самой дальней дистанцией от storage получают линк в первую очередь -
+    // там carry-цепочка длиннее и линк даёт наибольший profit.
+    const ordered = sources.slice().sort((a, b) =>
+        b.pos.getRangeTo(anchor) - a.pos.getRangeTo(anchor)
+    );
+
+    const terrain = room.getTerrain();
+    for (const source of ordered) {
+        // Уже есть линк или site у source - пропускаем.
+        const hasLink = existingLinks.some(l => l.pos.inRangeTo(source, 2))
+                     || existingSites.some(s => s.pos.inRangeTo(source, 2));
+        if (hasLink) continue;
+
+        // Контейнер должен быть на месте: miner.transferEnergy идёт со стояния на нём.
+        const container = source.pos.findInRange(FIND_STRUCTURES, 1, {
+            filter: s => s.structureType === STRUCTURE_CONTAINER,
+        })[0];
+        if (!container) continue;
+
+        const candidates = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const x = container.pos.x + dx;
+                const y = container.pos.y + dy;
+                if (x < 1 || x > 48 || y < 1 || y > 48) continue;
+                if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+                const pos = new RoomPosition(x, y, room.name);
+                // Линк должен быть в range 2 от source чтобы miner мог transferEnergy.
+                if (!pos.inRangeTo(source, 2)) continue;
+                // Не строимся поверх существующих non-rampart структур / сайтов.
+                if (pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType !== STRUCTURE_RAMPART)) continue;
+                if (pos.lookFor(LOOK_CONSTRUCTION_SITES).length > 0) continue;
+                candidates.push(pos);
+            }
+        }
+        if (candidates.length === 0) {
+            console.log(`[${room.name}][BUILD] No spot for link near source ${source.id}`);
+            continue;
+        }
+        const best = anchor.pos.findClosestByPath(candidates) || candidates[0];
+        const result = room.createConstructionSite(best, STRUCTURE_LINK);
+        if (result === OK) {
+            console.log(`[${room.name}][BUILD] Link site at ${best.x}:${best.y} for source ${source.id}`);
+        } else {
+            console.log(`[${room.name}][BUILD] createConstructionSite link failed: ${result} ${result.toStringStatus()}`);
+        }
+        return; // 1 site per call.
+    }
+}
+exports.buildLinksNearSources = buildLinksNearSources;
+
 // Extractor лежит на минерале - привязка к фиксированным координатам в schemes[]
 // невозможна (минерал в каждой комнате в своём месте). Ставим его отдельно по
 // результату FIND_MINERALS. RCL 6+.
@@ -366,6 +438,8 @@ exports.process = function() {
         // максимально рано (на RCL 2 миннер без CARRY дропает энергию в пустоту).
         if (Game.time % 50 === 0) {
             buildContainersNearSources(room);
+            // Source-link строится после контейнера, ставит 1 site за вызов.
+            buildLinksNearSources(room);
         }
     }
 }

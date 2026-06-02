@@ -40,6 +40,15 @@ const TERMINAL_ENERGY_FLOOR   = 30000;   // столько энергии ост
 const POOR_RECEIVE_FREE       = 60000;   // не шлём, если у получателя меньше места под трансфер
 const MAX_TRANSFER_ENERGY     = 30000;   // максимум за одну пересылку
 
+// Батарейки как дешёвый транспорт энергии между комнатами: налог Game.market считается по
+// числу единиц ресурса, а батарейка = 10 энергии, поэтому слать батарейки в ~10 раз дешевле,
+// чем эквивалент в сырой энергии. Донор стейджит батарейки в терминал (stageBatteriesForExport),
+// получатель с фабрикой перегоняет их в storage (drainTerminalBatteries) и разжимает обратно
+// в энергию (декомпрессия в processFactory).
+const TERMINAL_BATTERY_TARGET = 3000;    // сколько батареек держим в терминале донора под экспорт
+const MIN_BATTERY_SEND        = 500;     // не шлём батарейки мелкими порциями
+const MAX_BATTERY_SEND        = 3000;    // максимум батареек за пересылку (= 30k энергии)
+
 // Сжать излишки энергии в батарейки (storage/terminal -> factory). Не зависит от донорства:
 // зовётся для каждой veryRich-комнаты отдельным проходом.
 function compressEnergy(room) {
@@ -65,6 +74,44 @@ function compressEnergy(room) {
         room.transfer(RESOURCE_ENERGY, "terminal", "factory", 10000);
         return;
     }
+}
+
+// Держим запас батареек в терминале донора, чтобы было что слать в бедные комнаты.
+// No-op, если в storage батареек нет (комната их не производит) - тогда донор шлёт сырую энергию.
+function stageBatteriesForExport(room) {
+    if (!room.terminal || !room.storage) return;
+    if (room.terminal.store.getUsedCapacity(RESOURCE_BATTERY) >= TERMINAL_BATTERY_TARGET) return;
+    if (room.storage.store.getUsedCapacity(RESOURCE_BATTERY) < 50) return;
+
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {filter: c =>
+        c.memory.role == 'charger'
+            && c.memory.transfer
+            && c.memory.transfer.resource_type == RESOURCE_BATTERY
+            && c.memory.transfer.target_id == room.terminal.id
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    room.transfer(RESOURCE_BATTERY, "storage", "terminal", TERMINAL_BATTERY_TARGET);
+}
+
+// Присланные из других комнат батарейки оседают в терминале получателя. Бедная комната
+// перегоняет их в storage, откуда ensureFactoryHasBatteries поднимет их в фабрику, а
+// декомпрессия превратит обратно в энергию. Гейт по stored < POOR, чтобы не сливать
+// батарейки, которые донор сам застейджил под экспорт (у донора stored большой).
+function drainTerminalBatteries(room) {
+    if (!room.terminal || !room.storage) return;
+    if (room.getStoredEnergy() >= POOR_STORED_ENERGY) return;
+    if (room.terminal.store.getUsedCapacity(RESOURCE_BATTERY) === 0) return;
+
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {filter: c =>
+        c.memory.role == 'charger'
+            && c.memory.transfer
+            && c.memory.transfer.resource_type == RESOURCE_BATTERY
+            && c.memory.transfer.target_id == room.storage.id
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    room.transfer(RESOURCE_BATTERY, "terminal", "storage");
 }
 
 exports.balanceEnergy = function() {
@@ -105,6 +152,9 @@ exports.balanceEnergy = function() {
 
     // Шлём энергию из богатых комнат самым нуждающимся.
     for (const richRoom of richRooms) {
+        // Подкладываем батарейки в терминал, чтобы было чем дёшево делиться.
+        stageBatteriesForExport(richRoom);
+
         // Беднейшие (по суммарному запасу) первыми.
         const sortedPoorRooms = poorRooms.slice().sort((a, b) => {
             return a.getStoredEnergy() - b.getStoredEnergy();
@@ -113,13 +163,24 @@ exports.balanceEnergy = function() {
             // Terminal has 10-tick cooldown after each send - only one send per rich room per tick.
             if (richRoom.terminal.cooldown) break;
 
+            if (poorRoom.terminal.store.getFreeCapacity() < POOR_RECEIVE_FREE) {
+                continue
+            }
+
+            // Дешёвый путь: шлём батарейки, если у получателя есть фабрика для декомпрессии.
+            const donorBatteries = richRoom.terminal.store.getUsedCapacity(RESOURCE_BATTERY);
+            if (poorRoom.getFactory() && donorBatteries >= MIN_BATTERY_SEND) {
+                const amount = Math.min(donorBatteries, MAX_BATTERY_SEND);
+                if (richRoom.terminal.send(RESOURCE_BATTERY, amount, poorRoom.name) == OK) {
+                    console.log(`[EnergyBalance] Sent ${amount} batteries (~${amount * 10} energy) ${richRoom.name} -> ${poorRoom.name}`);
+                    break;
+                }
+            }
+
+            // Fallback: сырая энергия (получатель без фабрики или у донора нет батареек).
             const richRoomEnergy = richRoom.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
             if (richRoomEnergy < TERMINAL_ENERGY_FLOOR) {
                 break;
-            }
-
-            if (poorRoom.terminal.store.getFreeCapacity() < POOR_RECEIVE_FREE) {
-                continue
             }
 
             const transferAmount = Math.min(richRoomEnergy - TERMINAL_ENERGY_FLOOR, MAX_TRANSFER_ENERGY);
@@ -212,6 +273,8 @@ exports.processFactory = function() {
 
         // Charger dispatch isn't gated by factory cooldown - keep the buffer topped up.
         ensureFactoryHasBatteries(room);
+        // Перегоняем присланные батарейки из терминала в storage (только для бедных комнат).
+        drainTerminalBatteries(room);
 
         if (factory.cooldown) {
             continue
@@ -234,8 +297,9 @@ exports.processFactory = function() {
         } while (false);
 
         // Process energy <-> battery in the factory itself.
-        // - Decompression (battery -> energy) is preferred when stored energy in
-        //   the room (storage+terminal+factory) is critically low.
+        // - Decompression (battery -> energy) kicks in while the room is still "poor"
+        //   (stored energy below POOR_STORED_ENERGY) so battery reserves - including
+        //   ones shipped in from other rooms - are turned back into usable energy.
         // - Compression (energy -> battery) requires 600 energy in the factory and
         //   stops when the terminal already has enough batteries stockpiled.
         do {
@@ -243,7 +307,7 @@ exports.processFactory = function() {
             const factoryBattery = factory.store.getUsedCapacity(RESOURCE_BATTERY);
 
             // Decompress: 50 batteries -> 500 energy.
-            if (room.getStoredEnergy() < 10000 && factoryBattery >= 50) {
+            if (room.getStoredEnergy() < POOR_STORED_ENERGY && factoryBattery >= 50) {
                 factory.produce(RESOURCE_ENERGY);
                 break;
             }

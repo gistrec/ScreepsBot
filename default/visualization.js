@@ -437,10 +437,10 @@ visualiseMap = function(room) {
 
     // Богатая/бедная комната - та же метрика, что в resourceBalance (запас энергии).
     // Зелёный = богатая (делится), красный = бедная (нужна энергия), серый = норма.
-    // Символ "$" без emoji-варианта, чтобы color применялся.
+    // ⚡ с U+FE0E (text-presentation), чтобы рендерер не подменял на цветной emoji и color применялся.
     const wealth = resourceBalance.classifyEnergy(room);
     const wealthColor = wealth === 'rich' ? '#00FF00' : wealth === 'poor' ? '#FF4444' : '#AAAAAA';
-    Game.map.visual.text("$", new RoomPosition(49, 34, room.name), {color: wealthColor, align: 'right', fontSize: 10});
+    Game.map.visual.text("⚡︎", new RoomPosition(49, 34, room.name), {color: wealthColor, align: 'right', fontSize: 10});
 
     // Defending indicator - аналог nuker'а: иконка слева от ☢, цветом отличаем состояние.
     // Красный = под атакой, зелёный = мир. Символ без FE0F (text-presentation), чтобы color

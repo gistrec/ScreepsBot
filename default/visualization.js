@@ -1,5 +1,6 @@
 const lab = require('modules/lab');
 const buildModule = require('modules/build');
+const resourceBalance = require('modules/resourceBalance');
 const utils = require('utils');
 
 // Однобуквенные коды структур из modules/build.js (см. const B/R/S/E/T/L/M/C/F/N/O/P/H).
@@ -433,6 +434,13 @@ visualiseMap = function(room) {
     cpuParts.push('b' + formatBucket(Game.cpu.bucket));
     const cpuColor = Game.cpu.bucket < 3000 ? '#ff6666' : '#ffffff';
     Game.map.visual.text(cpuParts.join(' '), new RoomPosition(0, 22, room.name), {align: 'left', fontSize: 6, color: cpuColor});
+
+    // Богатая/бедная комната - та же метрика, что в resourceBalance (запас энергии).
+    // Зелёный = богатая (делится), красный = бедная (нужна энергия), серый = норма.
+    // Символ "$" без emoji-варианта, чтобы color применялся.
+    const wealth = resourceBalance.classifyEnergy(room);
+    const wealthColor = wealth === 'rich' ? '#00FF00' : wealth === 'poor' ? '#FF4444' : '#AAAAAA';
+    Game.map.visual.text("$", new RoomPosition(49, 34, room.name), {color: wealthColor, align: 'right', fontSize: 10});
 
     // Defending indicator - аналог nuker'а: иконка слева от ☢, цветом отличаем состояние.
     // Красный = под атакой, зелёный = мир. Символ без FE0F (text-presentation), чтобы color

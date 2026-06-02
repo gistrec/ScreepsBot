@@ -376,6 +376,15 @@ exports.process = function() {
     if (Game.time % 100  == 0) { exports.balanceEnergy();  }
 }
 
+// Классификация по запасу энергии - та же метрика, что в balanceEnergy (донор/получатель).
+// Используется визуализацией для иконки богатая/бедная.
+exports.classifyEnergy = function(room) {
+    const stored = room.getStoredEnergy();
+    if (stored > RICH_STORED_ENERGY) return 'rich';
+    if (stored < POOR_STORED_ENERGY) return 'poor';
+    return 'neutral';
+}
+
 
 exports.process = profiler.registerFN(exports.process, "resourceBalance.process");
 exports.processFactory = profiler.registerFN(exports.processFactory, "resourceBalance.processFactory");

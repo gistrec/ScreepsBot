@@ -316,44 +316,29 @@ exports.processFactory = function() {
             continue
         }
 
-        // Process minerals
+        // За тик фабрика делает РОВНО один produce(). Приоритет (батарейки важнее баров):
+        //   1) аварийная декомпрессия (энергокризис, тратим даже резерв)
+        //   2) surplus-декомпрессия у бедной комнаты (излишек батареек сверх резерва)
+        //   3) компрессия энергии в батарейки (приоритетнее баров)
+        //   4) компрессия минерала в бары
+        // Декомпрессия выше компрессии: если запас энергии низкий, не сжимаем энергию обратно.
+        // Раньше компрессия минерала и энергии были двумя отдельными do-while и оба звали
+        // produce() в одном тике - движок исполнял только одно намерение, второе терялось.
+        const factoryEnergy   = factory.store.getUsedCapacity(RESOURCE_ENERGY);
+        const factoryBattery  = factory.store.getUsedCapacity(RESOURCE_BATTERY);
+        const storageBattery  = room.storage  ? room.storage.store.getUsedCapacity(RESOURCE_BATTERY)  : 0;
+        const terminalBattery = room.terminal ? room.terminal.store.getUsedCapacity(RESOURCE_BATTERY) : 0;
+        const stored = room.getStoredEnergy();
+
         do {
-            const [mineralId, mineralType] = room.getMineral();
-            if (!mineralId) {
-                break
-            }
-
-            const commoditie = COMMODITIES[mineralType];
-            const consumptionMineralAmount = commoditie["amount"];
-
-            if (factory.store.getUsedCapacity(mineralType) >= consumptionMineralAmount) {
-                const procudedMineralType = Object.keys(commoditie["components"])[0];
-                factory.produce(procudedMineralType)
-            }
-        } while (false);
-
-        // Process energy <-> battery in the factory itself.
-        // - Decompression (battery -> energy) has two triggers: an emergency one that
-        //   taps the protected reserve when stored energy crashes, and a "use shipped
-        //   surplus" one that lets a poor room burn batteries above the reserve (e.g.
-        //   ones shipped in from other rooms) back into usable energy.
-        // - Compression (energy -> battery) requires 600 energy in the factory and
-        //   stops when the terminal already has enough batteries stockpiled.
-        do {
-            const factoryEnergy  = factory.store.getUsedCapacity(RESOURCE_ENERGY);
-            const factoryBattery = factory.store.getUsedCapacity(RESOURCE_BATTERY);
-            const storageBattery = room.storage ? room.storage.store.getUsedCapacity(RESOURCE_BATTERY) : 0;
-            const stored = room.getStoredEnergy();
-
-            // Decompress (emergency): 50 batteries -> 500 energy, даже из аварийного резерва.
+            // 1. Аварийная декомпрессия: 50 батареек -> 500 энергии, даже из аварийного резерва.
             if (stored < EMERGENCY_STORED_ENERGY && factoryBattery >= 50) {
                 factory.produce(RESOURCE_ENERGY);
                 break;
             }
 
-            // Decompress (use shipped surplus): только излишек сверх резерва. ensureFactoryHasBatteries
-            // подпитывает фабрику из storage, поэтому считаем суммарно factory+storage и стопаем,
-            // когда суммарно остаётся ровно аварийный резерв.
+            // 2. Surplus-декомпрессия: только излишек сверх резерва. ensureFactoryHasBatteries
+            //    подпитывает фабрику из storage, поэтому считаем суммарно factory+storage.
             if (stored < POOR_STORED_ENERGY
                     && factoryBattery + storageBattery > BATTERY_EMERGENCY_RESERVE
                     && factoryBattery >= 50) {
@@ -361,15 +346,22 @@ exports.processFactory = function() {
                 break;
             }
 
-            // Compress: 600 energy -> 50 batteries.
-            if (factoryEnergy < 600) break;
+            // 3. Компрессия энергии в батарейки: 600 энергии -> 50 батареек, пока буфер в
+            //    терминале не набран.
+            if (factoryEnergy >= 600 && terminalBattery < 10000) {
+                factory.produce(RESOURCE_BATTERY);
+                break;
+            }
 
-            const terminalBattery = room.terminal
-                ? room.terminal.store.getUsedCapacity(RESOURCE_BATTERY)
-                : 0;
-            if (terminalBattery >= 10000) break;
-
-            factory.produce(RESOURCE_BATTERY);
+            // 4. Компрессия минерала в бары.
+            const [mineralId, mineralType] = room.getMineral();
+            if (!mineralId) break;
+            const commoditie = COMMODITIES[mineralType];
+            if (!commoditie) break;
+            if (factory.store.getUsedCapacity(mineralType) >= commoditie["amount"]) {
+                const producedMineralType = Object.keys(commoditie["components"])[0];
+                factory.produce(producedMineralType);
+            }
         } while (false);
     }
 }

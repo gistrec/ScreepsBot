@@ -345,7 +345,7 @@ visualiseRoom = function(room) {
     updateEnergyEMA(room);
     const stats = room.memory.energy_stats;
     const totalE = room.getTotalEnergy();
-    const parts = [`🏦 ${formatEnergyCompact(totalE)}`, 'net e/t'];
+    const parts = [`🔋 ${formatEnergyCompact(totalE)}`, 'net e/t'];
     if (stats) {
         for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
             const w = ENERGY_WINDOWS[i];
@@ -412,7 +412,7 @@ visualiseMap = function(room) {
     // EMA уже посчитан в visualiseRoom (визуализация процессит rooms в порядке room->map).
     const stats = room.memory.energy_stats;
     // Δ = изменение запаса за тик (net e/t), знак +/- читается на самих числах.
-    const energyParts = [`🏦${formatEnergyCompact(room.getTotalEnergy())}`, 'Δ'];
+    const energyParts = [`🔋${formatEnergyCompact(room.getTotalEnergy())}`, 'Δ'];
     if (stats) {
         for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
             energyParts.push(stats.samples >= ENERGY_WINDOWS[i].warmup ? formatRate(stats.ema[i]) : '—');

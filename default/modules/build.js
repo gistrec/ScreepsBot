@@ -313,15 +313,57 @@ function buildExtractor(room) {
     room.createConstructionSite(mineral.pos, STRUCTURE_EXTRACTOR);
 }
 
+// BFS от краёв комнаты через walkable тайлы. Тайлы, до которых враг не может дойти
+// (отрезаны естественной стеной), не нуждаются в рампарте - экономим decay и build.
+// Возвращает Uint8Array[2500] где 1 = достижим извне, 0 = нет.
+function computeReachableFromEdge(terrain) {
+    const reachable = new Uint8Array(50 * 50);
+    const queue = [];
+    let head = 0;
+
+    // Seed: все ребра комнаты (x∈{0,49} или y∈{0,49}), не стена.
+    for (let i = 0; i < 50; i++) {
+        for (const [x, y] of [[i, 0], [i, 49], [0, i], [49, i]]) {
+            if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+            const idx = y * 50 + x;
+            if (reachable[idx]) continue;
+            reachable[idx] = 1;
+            queue.push(idx);
+        }
+    }
+    // BFS по 8 соседям (Chebyshev - move через диагональ возможен).
+    while (head < queue.length) {
+        const idx = queue[head++];
+        const x = idx % 50;
+        const y = (idx - x) / 50;
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
+                const nidx = ny * 50 + nx;
+                if (reachable[nidx]) continue;
+                if (terrain.get(nx, ny) === TERRAIN_MASK_WALL) continue;
+                reachable[nidx] = 1;
+                queue.push(nidx);
+            }
+        }
+    }
+    return reachable;
+}
+
 // Рампарты по периметру базы 3-клеточной полосой (layer 0 - граница 13×13 schemes,
 // layer 1/2 - две внутренние "обоймы"). Ставим только при RCL 8: на меньших уровнях
 // нет energy-budget'а на поддержание ~120 рампартов через decay/towers.
 // Ramparts могут наслаиваться поверх любых structure - createConstructionSite сработает
-// и на extension/tower/lab; на terrain wall - пропускаем.
+// и на extension/tower/lab; на terrain wall - пропускаем. Также пропускаем тайлы,
+// отрезанные стенами от краёв комнаты (враг туда не дойдёт).
 function buildRamparts(room, spawn) {
     if (room.controller.level < 8) return;
 
     const terrain = room.getTerrain();
+    const reachable = computeReachableFromEdge(terrain);
     const SIZE = 13;
     const LAYERS = 3;
 
@@ -334,6 +376,8 @@ function buildRamparts(room, spawn) {
             const py = spawn.pos.y + y - spawn_offset_y;
             if (px < 1 || px > 48 || py < 1 || py > 48) continue;
             if (terrain.get(px, py) === TERRAIN_MASK_WALL) continue;
+            // Тайл за стеной от внешнего края = враг не дойдёт, рампарт лишний.
+            if (!reachable[py * 50 + px]) continue;
 
             const pos = new RoomPosition(px, py, room.name);
             if (pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType == STRUCTURE_RAMPART)) continue;

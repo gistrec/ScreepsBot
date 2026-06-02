@@ -55,6 +55,17 @@ const MAX_BATTERY_SEND        = 3000;    // максимум батареек з
 const EMERGENCY_STORED_ENERGY   = 10000; // ниже - аварийная декомпрессия (трогаем резерв)
 const BATTERY_EMERGENCY_RESERVE = 5000;  // столько батареек бережём как аварийный резерв
 
+// Подпитка фабрики сырым минералом под компрессию в бары. Дозаправляем по мере расхода
+// (гистерезис LOW->REFILL), а не раз в N тиков - иначе фабрика простаивает между дозаправками.
+const MINERAL_SURPLUS_THRESHOLD = 50000; // компрессим минерал, только если суммарно его столько (резерв под реакции/бусты не трогаем)
+const MINERAL_SOURCE_RESERVE    = 20000; // не берём из источника (terminal/storage), если там меньше
+const FACTORY_MINERAL_LOW       = 5000;  // ниже этого минерала в фабрике - дозаправляем
+const FACTORY_MINERAL_REFILL    = 10000; // дозаправляем минерал до этого уровня в фабрике
+const FACTORY_FREE_FOR_REFILL   = 20000; // нужно столько свободного места в фабрике
+const FACTORY_ENERGY_LOW        = 2000;  // ниже этого энергии в фабрике - подаём энергию
+const FACTORY_ENERGY_REFILL     = 5000;  // подаём энергию до этого уровня в фабрике
+const FACTORY_BAR_EVACUATE      = 10000; // выше этого баров в фабрике - выгружаем в storage
+
 // Сжать излишки энергии в батарейки (storage/terminal -> factory). Не зависит от донорства:
 // зовётся для каждой veryRich-комнаты отдельным проходом.
 function compressEnergy(room) {
@@ -118,6 +129,82 @@ function drainTerminalBatteries(room) {
     if (alreadyAssigned) return;
 
     room.transfer(RESOURCE_BATTERY, "terminal", "storage");
+}
+
+// Дозаправка фабрики ресурсом до target в фабрике (room.transfer останавливается, когда в
+// target набралось max_resource_count_in_target). Не плодим дубли: один charger на ресурс.
+function dispatchFactoryRefill(room, resourceType, source, target) {
+    const factory = room.getFactory();
+    if (!factory) return;
+
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {filter: c =>
+        c.memory.role == 'charger'
+            && c.memory.transfer
+            && c.memory.transfer.resource_type == resourceType
+            && c.memory.transfer.target_id == factory.id
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    room.transfer(resourceType, source, "factory", target);
+}
+
+// Держим в фабрике запас сырого минерала под компрессию в бары, дозаправляя по мере расхода.
+// Компрессим только ИЗЛИШЕК минерала: если суммарный запас мал, минерал нужен лабам/бустам.
+function ensureFactoryHasMineral(room) {
+    const factory = room.getFactory();
+    if (!factory) return;
+
+    const [mineralId, mineralType] = room.getMineral();
+    if (!mineralType) return;
+
+    const terminalMineral = room.terminal ? room.terminal.store.getUsedCapacity(mineralType) : 0;
+    const storageMineral  = room.storage  ? room.storage.store.getUsedCapacity(mineralType)  : 0;
+
+    if (terminalMineral + storageMineral < MINERAL_SURPLUS_THRESHOLD) return;
+    if (factory.store.getFreeCapacity() < FACTORY_FREE_FOR_REFILL) return;
+
+    // Фабрике нужна энергия на компрессию бара.
+    if (factory.store.getUsedCapacity(RESOURCE_ENERGY) < FACTORY_ENERGY_LOW) {
+        dispatchFactoryRefill(room, RESOURCE_ENERGY, "terminal", FACTORY_ENERGY_REFILL);
+        return;
+    }
+
+    // Гистерезис: дозаправляем минерал, только когда фабрика просела ниже нижней границы.
+    if (factory.store.getUsedCapacity(mineralType) > FACTORY_MINERAL_LOW) return;
+
+    if (terminalMineral > MINERAL_SOURCE_RESERVE) {
+        dispatchFactoryRefill(room, mineralType, "terminal", FACTORY_MINERAL_REFILL);
+        return;
+    }
+    if (storageMineral > MINERAL_SOURCE_RESERVE) {
+        dispatchFactoryRefill(room, mineralType, "storage", FACTORY_MINERAL_REFILL);
+        return;
+    }
+}
+
+// Выгружаем накопленные бары из фабрики в storage, чтобы освободить место под минерал.
+function evacuateFactoryBars(room) {
+    const factory = room.getFactory();
+    if (!factory) return;
+
+    const [mineralId, mineralType] = room.getMineral();
+    if (!mineralType) return;
+
+    const commoditie = COMMODITIES[mineralType];
+    if (!commoditie) return;
+
+    const producedMineralType = Object.keys(commoditie["components"])[0];
+    if (factory.store.getUsedCapacity(producedMineralType) <= FACTORY_BAR_EVACUATE) return;
+
+    const alreadyAssigned = room.find(FIND_MY_CREEPS, {filter: c =>
+        c.memory.role == 'charger'
+            && c.memory.transfer
+            && c.memory.transfer.resource_type == producedMineralType
+            && c.memory.transfer.source_id == factory.id
+    }).length > 0;
+    if (alreadyAssigned) return;
+
+    room.transfer(producedMineralType, "factory", "storage");
 }
 
 exports.balanceEnergy = function() {
@@ -201,70 +288,6 @@ exports.balanceEnergy = function() {
     }
 }
 
-exports.balanceMineral = function() {
-    for (const roomName in Game.rooms) {
-        const room = Game.rooms[roomName];
-        if (!room.controller || !room.controller.my || room.controller.level < 7) {
-            continue
-        }
-
-        const [mineralId, mineralType] = room.getMineral();
-        if (!mineralId) {
-            continue
-        }
-
-        const factory = room.getFactory();
-        if (!factory) {
-            continue;
-        }
-
-        // Get best place to transfer
-        const commoditie = COMMODITIES[mineralType];
-        const procudedMineralType = Object.keys(commoditie["components"])[0];
-        if (factory.store.getUsedCapacity(procudedMineralType) > 10000) {
-            room.transfer(procudedMineralType, "factory", "storage");
-            continue
-        }
-
-        const terminalUsedCapacity = room.terminal
-            ? room.terminal.store.getUsedCapacity(mineralType)
-            : 0;
-        const storageUsedCapacity = room.storage
-            ? room.storage.store.getUsedCapacity(mineralType)
-            : 0;
-
-        if (terminalUsedCapacity + storageUsedCapacity < 50000) {
-            continue
-        }
-
-        if (factory.store.getFreeCapacity() < 20000) {
-            continue
-        }
-
-        // TODO: Find best place
-        if (factory.store.getUsedCapacity(RESOURCE_ENERGY) < 2000) {
-            room.transfer(RESOURCE_ENERGY, "terminal", "factory", 5000);
-            continue
-        }
-
-        if (factory.store.getUsedCapacity(mineralType) > 5000) {
-            continue
-        }
-
-        if (terminalUsedCapacity > 20000 /** Left extra 10k minerals */) {
-            console.log(`[MineralBalance] Transfer ${mineralType} from terminal to factory`);
-            room.transfer(mineralType, "terminal", "factory", 10000);
-            continue
-        }
-        if (storageUsedCapacity > 20000 /** Left extra 10k minerals */) {
-            console.log(`[MineralBalance] Transfer ${mineralType} from storage to factory`);
-            room.transfer(mineralType, "storage", "factory", 10000);
-            continue
-        }
-    }
-}
-
-
 exports.processFactory = function() {
     for (const roomName in Game.rooms) {
         const room = Game.rooms[roomName];
@@ -277,10 +300,13 @@ exports.processFactory = function() {
             continue;
         }
 
-        // Charger dispatch isn't gated by factory cooldown - keep the buffer topped up.
+        // Charger dispatch isn't gated by factory cooldown - keep the buffers topped up.
         ensureFactoryHasBatteries(room);
         // Перегоняем присланные батарейки из терминала в storage (только для бедных комнат).
         drainTerminalBatteries(room);
+        // Подпитываем фабрику минералом по мере расхода и выгружаем готовые бары.
+        ensureFactoryHasMineral(room);
+        evacuateFactoryBars(room);
 
         if (factory.cooldown) {
             continue
@@ -348,11 +374,9 @@ exports.processFactory = function() {
 exports.process = function() {
     if (Game.time % 10   == 0) { exports.processFactory(); }
     if (Game.time % 100  == 0) { exports.balanceEnergy();  }
-    if (Game.time % 600  == 0) { exports.balanceMineral(); }
 }
 
 
 exports.process = profiler.registerFN(exports.process, "resourceBalance.process");
 exports.processFactory = profiler.registerFN(exports.processFactory, "resourceBalance.processFactory");
 exports.balanceEnergy = profiler.registerFN(exports.balanceEnergy, "resourceBalance.balanceEnergy");
-exports.balanceMineral = profiler.registerFN(exports.balanceMineral, "resourceBalance.balanceMineral");

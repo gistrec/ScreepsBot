@@ -49,6 +49,12 @@ const TERMINAL_BATTERY_TARGET = 3000;    // сколько батареек де
 const MIN_BATTERY_SEND        = 500;     // не шлём батарейки мелкими порциями
 const MAX_BATTERY_SEND        = 3000;    // максимум батареек за пересылку (= 30k энергии)
 
+// Два порога декомпрессии (battery -> energy):
+// - аварийный: запас энергии рухнул, тратим даже аварийный резерв;
+// - "использовать присланное": бедная комната разжимает излишек батареек сверх резерва.
+const EMERGENCY_STORED_ENERGY   = 10000; // ниже - аварийная декомпрессия (трогаем резерв)
+const BATTERY_EMERGENCY_RESERVE = 5000;  // столько батареек бережём как аварийный резерв
+
 // Сжать излишки энергии в батарейки (storage/terminal -> factory). Не зависит от донорства:
 // зовётся для каждой veryRich-комнаты отдельным проходом.
 function compressEnergy(room) {
@@ -297,17 +303,30 @@ exports.processFactory = function() {
         } while (false);
 
         // Process energy <-> battery in the factory itself.
-        // - Decompression (battery -> energy) kicks in while the room is still "poor"
-        //   (stored energy below POOR_STORED_ENERGY) so battery reserves - including
-        //   ones shipped in from other rooms - are turned back into usable energy.
+        // - Decompression (battery -> energy) has two triggers: an emergency one that
+        //   taps the protected reserve when stored energy crashes, and a "use shipped
+        //   surplus" one that lets a poor room burn batteries above the reserve (e.g.
+        //   ones shipped in from other rooms) back into usable energy.
         // - Compression (energy -> battery) requires 600 energy in the factory and
         //   stops when the terminal already has enough batteries stockpiled.
         do {
             const factoryEnergy  = factory.store.getUsedCapacity(RESOURCE_ENERGY);
             const factoryBattery = factory.store.getUsedCapacity(RESOURCE_BATTERY);
+            const storageBattery = room.storage ? room.storage.store.getUsedCapacity(RESOURCE_BATTERY) : 0;
+            const stored = room.getStoredEnergy();
 
-            // Decompress: 50 batteries -> 500 energy.
-            if (room.getStoredEnergy() < POOR_STORED_ENERGY && factoryBattery >= 50) {
+            // Decompress (emergency): 50 batteries -> 500 energy, даже из аварийного резерва.
+            if (stored < EMERGENCY_STORED_ENERGY && factoryBattery >= 50) {
+                factory.produce(RESOURCE_ENERGY);
+                break;
+            }
+
+            // Decompress (use shipped surplus): только излишек сверх резерва. ensureFactoryHasBatteries
+            // подпитывает фабрику из storage, поэтому считаем суммарно factory+storage и стопаем,
+            // когда суммарно остаётся ровно аварийный резерв.
+            if (stored < POOR_STORED_ENERGY
+                    && factoryBattery + storageBattery > BATTERY_EMERGENCY_RESERVE
+                    && factoryBattery >= 50) {
                 factory.produce(RESOURCE_ENERGY);
                 break;
             }

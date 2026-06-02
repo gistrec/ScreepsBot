@@ -313,25 +313,27 @@ function buildExtractor(room) {
     room.createConstructionSite(mineral.pos, STRUCTURE_EXTRACTOR);
 }
 
-// BFS от краёв комнаты через walkable тайлы. Тайлы, до которых враг не может дойти
-// (отрезаны естественной стеной), не нуждаются в рампарте - экономим decay и build.
-// Возвращает Uint8Array[2500] где 1 = достижим извне, 0 = нет.
-function computeReachableFromEdge(terrain) {
-    const reachable = new Uint8Array(50 * 50);
-    const queue = [];
+// Тайлы, на которые враг может либо встать, либо ударить ranged-attack'ом.
+// Stage 1: BFS от краёв комнаты через walkable - где enemy может физически стоять.
+// Stage 2: dilate на 3 клетки игнорируя стены - rangedAttack/rangedMassAttack бьют
+// на range 3 СКВОЗЬ стены (в Screeps range-based, не line-of-sight). Структура за
+// стеной но в 3 клетках от walkable - всё равно под обстрелом, нужен рампарт.
+// Возвращает Uint8Array[2500] - 1 = под угрозой, 0 = неприступно.
+function computeDangerSet(terrain) {
+    const danger = new Uint8Array(50 * 50);
+    let queue = [];
     let head = 0;
 
-    // Seed: все ребра комнаты (x∈{0,49} или y∈{0,49}), не стена.
+    // Stage 1: BFS walkable от ребёр комнаты.
     for (let i = 0; i < 50; i++) {
         for (const [x, y] of [[i, 0], [i, 49], [0, i], [49, i]]) {
             if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
             const idx = y * 50 + x;
-            if (reachable[idx]) continue;
-            reachable[idx] = 1;
+            if (danger[idx]) continue;
+            danger[idx] = 1;
             queue.push(idx);
         }
     }
-    // BFS по 8 соседям (Chebyshev - move через диагональ возможен).
     while (head < queue.length) {
         const idx = queue[head++];
         const x = idx % 50;
@@ -343,14 +345,39 @@ function computeReachableFromEdge(terrain) {
                 const ny = y + dy;
                 if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
                 const nidx = ny * 50 + nx;
-                if (reachable[nidx]) continue;
+                if (danger[nidx]) continue;
                 if (terrain.get(nx, ny) === TERRAIN_MASK_WALL) continue;
-                reachable[nidx] = 1;
+                danger[nidx] = 1;
                 queue.push(nidx);
             }
         }
     }
-    return reachable;
+
+    // Stage 2: dilate на 3 клетки игнорируя стены (ranged-attack сквозь стены).
+    // BFS с глубиной: re-enqueue только walkable-frontier (depth 0), новые тайлы
+    // получают depth+1, остановка на depth=3.
+    let frontier = queue.slice(0, head);  // все walkable, depth 0
+    for (let depth = 1; depth <= 3; depth++) {
+        const next = [];
+        for (const idx of frontier) {
+            const x = idx % 50;
+            const y = (idx - x) / 50;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
+                    const nidx = ny * 50 + nx;
+                    if (danger[nidx]) continue;
+                    danger[nidx] = 1;
+                    next.push(nidx);
+                }
+            }
+        }
+        frontier = next;
+    }
+    return danger;
 }
 
 // Рампарты по периметру базы 3-клеточной полосой (layer 0 - граница 13×13 schemes,
@@ -363,7 +390,7 @@ function buildRamparts(room, spawn) {
     if (room.controller.level < 8) return;
 
     const terrain = room.getTerrain();
-    const reachable = computeReachableFromEdge(terrain);
+    const danger = computeDangerSet(terrain);
     const SIZE = 13;
     const LAYERS = 3;
 
@@ -376,8 +403,8 @@ function buildRamparts(room, spawn) {
             const py = spawn.pos.y + y - spawn_offset_y;
             if (px < 1 || px > 48 || py < 1 || py > 48) continue;
             if (terrain.get(px, py) === TERRAIN_MASK_WALL) continue;
-            // Тайл за стеной от внешнего края = враг не дойдёт, рампарт лишний.
-            if (!reachable[py * 50 + px]) continue;
+            // Тайл недостижим для enemy: ни walkable доступа, ни ranged-attack в range 3.
+            if (!danger[py * 50 + px]) continue;
 
             const pos = new RoomPosition(px, py, room.name);
             if (pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType == STRUCTURE_RAMPART)) continue;

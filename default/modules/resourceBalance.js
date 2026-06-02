@@ -384,6 +384,10 @@ exports.process = function() {
 // Считаем батарейки×10 (getTotalEnergy): они разжимаются обратно в энергию, поэтому комната
 // на батарейках по факту богатая. Используется визуализацией для иконки богатая/бедная.
 exports.classifyEnergy = function(room) {
+    // Без терминала комната не участвует в обмене (как и в balanceEnergy) - ни донор, ни
+    // получатель, поэтому ни rich, ни poor.
+    if (!room.terminal) return 'neutral';
+
     const stored = room.getTotalEnergy();
     if (stored > RICH_STORED_ENERGY) return 'rich';
     if (stored < POOR_STORED_ENERGY) return 'poor';

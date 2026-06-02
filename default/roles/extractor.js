@@ -15,24 +15,24 @@ const roleExtractor = {
     spawn: function(room) {
         // Не спавним, если в комнате нет минерала
         const [mineralId, mineralType] = room.getMineral();
-        if (!mineralId) return false; // No need to spawn
+        if (!mineralId) return true; // No need to spawn
 
         // Не спавним, если в комнате временно закончились минералы
         const mineral = Game.getObjectById(mineralId);
         // mineralId был валиден на момент room.getMineral() (видна комната), но если этот
         // тик мы потеряли видимость - getObjectById вернёт null. Не спавним, проверим позже.
         if (!mineral) return true;
-        if (mineral.mineralAmount == 0) return; // No need to spawn
+        if (mineral.mineralAmount == 0) return true; // No need to spawn
 
         // Не спавним, если в хранилищах слишком много минералов
         const mineralCountInStorage = (room.storage ? room.storage.store.getUsedCapacity(mineralType) : 0);
         const mineralcountInTerminal = (room.terminal ? room.terminal.store.getUsedCapacity(mineralType) : 0);
         const mineralCountInRoom = mineralCountInStorage + mineralcountInTerminal;
-        if (mineralCountInRoom > MAX_MINERALS_IN_ROOM) return false; // No need to spawn
+        if (mineralCountInRoom > MAX_MINERALS_IN_ROOM) return true; // No need to spawn
 
         // Не спавним, если все потребители этого минерала (импортёры через `require`
         // и локальные лабы по `resources`) уже забиты. Добытое некуда девать.
-        if (lab.isDownstreamSaturated(mineralType)) return false; // No need to spawn
+        if (lab.isDownstreamSaturated(mineralType)) return true; // No need to spawn
 
         // Спавним как только появится свободный спавн
         const spawn = utils.findFreeSpawn(room);
@@ -40,11 +40,11 @@ const roleExtractor = {
 
         // Не спавним, если в комнате уже есть extractor
         const extractors = utils.creepsByRole(room, 'extractor');
-        if (extractors.length >= MAX_EXTRACTORS_IN_ROOM) return false; // No need to spawn
+        if (extractors.length >= MAX_EXTRACTORS_IN_ROOM) return true; // No need to spawn
 
         // Не спавним, если в комнате нет экстрактора
         const extractor = room.find(FIND_MY_STRUCTURES, {filter: (structure) => structure.structureType == STRUCTURE_EXTRACTOR}).shift();
-        if (!extractor) return false; // No need to spawn
+        if (!extractor) return true; // No need to spawn
 
         const name  = 'Extractor' + Game.time;
         const role = 'extractor';
@@ -59,7 +59,7 @@ const roleExtractor = {
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         // Не пытаемся спавнить других крипов в этот тик
-        return true;
+        return false;
     },
 
     /** @param {Creep} creep **/

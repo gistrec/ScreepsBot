@@ -24,10 +24,53 @@ function ensureFactoryHasBatteries(room) {
     room.transfer(RESOURCE_BATTERY, "storage", "factory", 5000);
 }
 
+// Все три уровня считаются по ОДНОЙ метрике - getStoredEnergy() (storage+terminal+factory),
+// чтобы классы были взаимоисключающими и согласованными. Раньше veryRich считался по
+// суммарному запасу, а rich/poor - только по энергии в терминале, из-за чего комната могла
+// быть одновременно "очень богатой" и "бедной" (ей слали энергию, хотя склады забиты), а
+// veryRich-комната с терминалом 30-50k не попадала в richRooms и никогда не сжимала излишки.
+const POOR_STORED_ENERGY      = 50000;   // ниже - комнате нужна энергия
+const RICH_STORED_ENERGY      = 100000;  // выше - комната может делиться
+const VERY_RICH_STORED_ENERGY = 200000;  // выше - сжимаем излишки в батарейки
+
+// Транспортные предусловия (терминал - буфер пересылки, а не показатель богатства).
+const TERMINAL_DONATE_ENERGY  = 50000;   // донор должен иметь столько энергии в терминале
+const TERMINAL_RECEIVE_FREE   = 30000;   // получателю нужно столько свободного места
+const TERMINAL_ENERGY_FLOOR   = 30000;   // столько энергии оставляем в терминале донора
+const POOR_RECEIVE_FREE       = 60000;   // не шлём, если у получателя меньше места под трансфер
+const MAX_TRANSFER_ENERGY     = 30000;   // максимум за одну пересылку
+
+// Сжать излишки энергии в батарейки (storage/terminal -> factory). Не зависит от донорства:
+// зовётся для каждой veryRich-комнаты отдельным проходом.
+function compressEnergy(room) {
+    const factory = room.getFactory();
+    if (!factory) return;
+
+    if (factory.store.getUsedCapacity(RESOURCE_BATTERY) > 10000) {
+        // Оставляем буфер 5000 батареек в фабрике для быстрой декомпрессии.
+        room.transfer(RESOURCE_BATTERY, "factory", "storage", null, 5000);
+        return;
+    }
+    if (factory.store.getUsedCapacity(RESOURCE_ENERGY) > 5000) return;
+    if (factory.store.getFreeCapacity() < 20000) return;
+
+    const terminalEnergy = room.terminal ? room.terminal.store.getUsedCapacity(RESOURCE_ENERGY) : 0;
+    const storageEnergy  = room.storage  ? room.storage.store.getUsedCapacity(RESOURCE_ENERGY)  : 0;
+
+    if (storageEnergy > 20000 /** Left extra 20k energy */) {
+        room.transfer(RESOURCE_ENERGY, "storage", "factory", 10000);
+        return;
+    }
+    if (terminalEnergy > 20000 /** Left extra 20k energy */) {
+        room.transfer(RESOURCE_ENERGY, "terminal", "factory", 10000);
+        return;
+    }
+}
+
 exports.balanceEnergy = function() {
-    let veryRichRooms = [];
-    let richRooms = [];
-    let poorRooms = [];
+    const veryRichRooms = [];
+    const richRooms = [];
+    const poorRooms = [];
 
     for (const roomName in Game.rooms) {
         const room = Game.rooms[roomName];
@@ -38,88 +81,51 @@ exports.balanceEnergy = function() {
             continue
         }
 
-        const energy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
-        const usedCapacity = room.terminal.store.getUsedCapacity();
-        const freeCapacity = room.terminal.store.getFreeCapacity();
+        const stored = room.getStoredEnergy();
+        const terminalEnergy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
+        const terminalFree = room.terminal.store.getFreeCapacity();
 
-        if (room.getStoredEnergy() > 200000) {
-            console.log(`[EnergyBalance] Room ${roomName} have a lot of energy (${energy} energy)`)
+        if (stored > VERY_RICH_STORED_ENERGY) {
             veryRichRooms.push(room);
         }
 
-        if (energy < 30000 && freeCapacity > 30000) {
-            console.log(`[EnergyBalance] Room ${roomName} need more energy [${energy} energy / ${usedCapacity} all resources]`)
-            poorRooms.push(room);
-            continue
-        }
-        if (energy > 50000) {
-            console.log(`[EnergyBalance] Room ${roomName} have extra energy [${energy} energy / ${usedCapacity} all resources]`)
+        if (stored > RICH_STORED_ENERGY && terminalEnergy > TERMINAL_DONATE_ENERGY) {
+            console.log(`[EnergyBalance] Room ${roomName} can share energy [stored ${stored} / terminal ${terminalEnergy}]`)
             richRooms.push(room);
-            continue
+        } else if (stored < POOR_STORED_ENERGY && terminalFree > TERMINAL_RECEIVE_FREE) {
+            console.log(`[EnergyBalance] Room ${roomName} need more energy [stored ${stored} / terminal ${terminalEnergy}]`)
+            poorRooms.push(room);
         }
     }
 
-    // Send energy from rich room to poor rooms if needed
+    // Сжимаем излишки независимо от донорства.
+    for (const room of veryRichRooms) {
+        compressEnergy(room);
+    }
+
+    // Шлём энергию из богатых комнат самым нуждающимся.
     for (const richRoom of richRooms) {
-        do {
-            if (veryRichRooms.includes(richRoom)) {
-                // Try to compress energy
-                const factory = richRoom.getFactory();
-                if (!factory) {
-                    break;
-                }
-
-                if (factory.store.getUsedCapacity(RESOURCE_BATTERY) > 10000) {
-                    // Leave the 5000 battery buffer in the factory for fast decompression.
-                    richRoom.transfer(RESOURCE_BATTERY, "factory", "storage", null, 5000);
-                    break
-                }
-
-                if (factory.store.getUsedCapacity(RESOURCE_ENERGY) > 5000) {
-                    break
-                }
-
-                if (factory.store.getFreeCapacity() < 20000) {
-                    break;
-                }
-                const terminalUsedCapacity = richRoom.terminal
-                    ? richRoom.terminal.store.getUsedCapacity(RESOURCE_ENERGY)
-                    : 0;
-                const storageUsedCapacity = richRoom.storage
-                    ? richRoom.storage.store.getUsedCapacity(RESOURCE_ENERGY)
-                    : 0;
-
-                if (storageUsedCapacity > 20000 /** Left extra 20k energy */) {
-                    richRoom.transfer(RESOURCE_ENERGY, "storage", "factory", 10000);
-                    break
-                }
-                if (terminalUsedCapacity > 20000 /** Left extra 20k energy */) {
-                    richRoom.transfer(RESOURCE_ENERGY, "terminal", "factory", 10000);
-                    break
-                }
-            }
-        } while (false);
-
-        // Sort poorest first so the most needy room gets the next available transfer.
+        // Беднейшие (по суммарному запасу) первыми.
         const sortedPoorRooms = poorRooms.slice().sort((a, b) => {
-            return a.terminal.store.getUsedCapacity(RESOURCE_ENERGY) - b.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
+            return a.getStoredEnergy() - b.getStoredEnergy();
         });
         for (const poorRoom of sortedPoorRooms) {
             // Terminal has 10-tick cooldown after each send - only one send per rich room per tick.
             if (richRoom.terminal.cooldown) break;
 
-            // Left 30k energy in rich room
             const richRoomEnergy = richRoom.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
-            if (richRoomEnergy < 30000) {
+            if (richRoomEnergy < TERMINAL_ENERGY_FLOOR) {
                 break;
             }
 
-            const poorRoomFreeCapacity = poorRoom.terminal.store.getFreeCapacity();
-            if (poorRoomFreeCapacity < 60000) {
+            if (poorRoom.terminal.store.getFreeCapacity() < POOR_RECEIVE_FREE) {
                 continue
             }
 
-            const transferAmount = Math.min(richRoomEnergy - 30000, 30000);
+            const transferAmount = Math.min(richRoomEnergy - TERMINAL_ENERGY_FLOOR, MAX_TRANSFER_ENERGY);
+            if (transferAmount <= 0) {
+                break;
+            }
 
             if (richRoom.sendEnergy(poorRoom.name, transferAmount) == OK) {
                 break;

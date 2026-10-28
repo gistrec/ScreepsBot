@@ -2,17 +2,20 @@ const taskCreep = require('../tasks/creep')
 const taskBoost = require('../tasks/boost')
 const utils = require('../utils')
 
+// energy == реальная стоимость тела (BODYPART_COST), иначе гейт по energyAvailable пропускает,
+// а spawnCreep отвечает ERR_NOT_ENOUGH_ENERGY. Тиры: RCL 4-5 (cap 1300/1800) → 1160,
+// RCL 6 (cap 2300) → 2280, RCL 7+ (cap 5600+) → 3400. Лимит MAX_CREEP_SIZE = 50 частей.
 const configurations = [
-    {"energy": 1200, "max_count": 2.0, "parts": [TOUGH, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
+    {"energy": 1160, "max_count": 2.0, "parts": [TOUGH, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
                                                  CARRY,  CARRY,  MOVE,   MOVE,   MOVE,   MOVE,   MOVE]},
-    {"energy": 2270, "max_count": 2.0, "parts": [TOUGH, TOUGH, TOUGH, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
+    {"energy": 2280, "max_count": 2.0, "parts": [TOUGH, TOUGH, TOUGH, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
                                                  ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
-                                                 ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, CARRY,  CARRY,  CARRY,  CARRY,  CARRY,
-                                                 MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE]},
-    {"energy": 4800, "max_count": 2.0, "parts": [ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
+                                                 CARRY,  CARRY,  CARRY,  CARRY,
+                                                 MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE]},
+    {"energy": 3400, "max_count": 2.0, "parts": [ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
                                                  ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
                                                  ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, ATTACK,
-                                                 ATTACK, ATTACK, ATTACK, ATTACK, ATTACK, CARRY,  CARRY,  CARRY,  CARRY,  CARRY,
+                                                 CARRY,  CARRY,  CARRY,  CARRY,  CARRY,
                                                  MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,   MOVE,
                                                  MOVE,   MOVE,   MOVE,   MOVE,   MOVE]}
 ];
@@ -41,7 +44,7 @@ const roleRampartDefender = {
             if (!force) return true;
         }
 
-        const spawn = utils.findFreeSpawn(room, {requireActive: false});
+        const spawn = utils.findFreeSpawn(room);
         if (!spawn) {
             return true;
         }
@@ -53,11 +56,30 @@ const roleRampartDefender = {
             if (!force) return true;
         }
 
+        // Минимальный конфиг (1160e) собирается только с RCL 4 (cap 1300). Если даже он не
+        // влезает в активную ёмкость - ждать бессмысленно, не держим цепочку (upgrader и остальные).
+        if (configurations[0].energy > utils.getEffectiveEnergyCapacity(room)) {
+            return true;
+        }
+
+        // Ждём энергию так же, как miner/charger/upgrader: защитник приоритетнее ролей ниже
+        // по цепочке, extension'ы дольются за несколько тиков.
+        if (creepConfiguration.energy > room.energyAvailable) {
+            console.log(`[${room.name}] Need RampartDefender, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+            utils.recordSpawnNeed(room, 'rampart_defender', creepConfiguration.energy);
+            return false;
+        }
+
         const boost_queue = ['XUH2O', 'XGHO2'];
         const name = "Rd" + Game.time;
         const role = 'rampart_defender'
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(creepConfiguration["parts"], name, { memory: { role, boost_queue }, energyStructures});
+        const result = spawn.spawnCreep(creepConfiguration["parts"], name, { memory: { role, boost_queue }, energyStructures});
+        if (result !== OK) {
+            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
+            return !utils.isTransientSpawnError(result);
+        }
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
         return false;
     },

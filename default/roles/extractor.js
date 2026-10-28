@@ -55,7 +55,17 @@ const roleExtractor = {
             MOVE,  MOVE,  MOVE,  MOVE,  MOVE,
             CARRY, CARRY, CARRY, CARRY, CARRY,
         ];
-        spawn.spawnCreep(parts, name, {memory: { role, mineral_id, extractor_id }, energyStructures: utils.getEnergyStructures(room, spawn)});
+        // Нет энергии - не держим цепочку: всё, что ниже (reserver 1300e, harvester 1250e),
+        // дороже и всё равно не заспавнится, а ложный spawn_need и пустой intent не нужны.
+        // Повторим на следующем проходе.
+        if (utils.bodyCost(parts) > room.energyAvailable) return true;
+
+        const result = spawn.spawnCreep(parts, name, {memory: { role, mineral_id, extractor_id }, energyStructures: utils.getEnergyStructures(room, spawn)});
+        if (result !== OK) {
+            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            // Временный отказ - ждём, как остальные роли; постоянный - не держим цепочку.
+            return !utils.isTransientSpawnError(result);
+        }
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
 
         // Не пытаемся спавнить других крипов в этот тик

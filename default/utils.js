@@ -193,6 +193,15 @@ exports.bodyCost = function(parts) {
     return cost;
 }
 
+// Отказы spawnCreep, которые лечатся ожиданием: энергия дольётся, спавн освободится, имя
+// ('<Role>' + Game.time) на следующем тике будет другим. Роль в цепочке на такой отказ держит
+// цепочку (return false) - ровно как на гейте по энергии. Остальные коды (ERR_INVALID_ARGS -
+// тело > 50 частей, ERR_RCL_NOT_ENOUGH - неактивный спавн, ERR_NOT_OWNER) постоянные: держать
+// цепочку бессмысленно, роль возвращает true и повторит попытку через 10 тиков.
+exports.isTransientSpawnError = function(result) {
+    return result === ERR_NOT_ENOUGH_ENERGY || result === ERR_BUSY || result === ERR_NAME_EXISTS;
+}
+
 exports.getEnergyStructures = function(room, spawn) {
     const sortByRange = ((first, second) => {
         const rangeFirst  = spawn.pos.getRangeTo(first);

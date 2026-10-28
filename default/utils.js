@@ -155,6 +155,11 @@ exports.recordSpawnNeed = function(room, role, needed) {
 }
 
 // Свободный спавн в комнате, готовый принять задачу spawnCreep.
+// `spawning` - снимок начала тика, поэтому отдельно отсеиваем спавны, которым в этом тике уже
+// отдан spawnCreep (intentSent, см. prototypes/structure.js): модули (expansion, powerBank,
+// wallBreaker) в main.js идут раньше spawnCreeps комнаты, и без этого цепочка комнаты видела
+// их спавн свободным и перезаписывала интент. Теперь занятый модулем спавн для цепочки
+// выглядит как spawning - роль возвращает true, как и при любом занятом спавне.
 // Опции:
 //   primaryOnly  - брать только спавн с именем == room.name (legacy hack из CLAUDE.md
 //                  для сериализации спавн-цепочки между ролями).
@@ -162,6 +167,7 @@ exports.recordSpawnNeed = function(room, role, needed) {
 exports.findFreeSpawn = function(room, {primaryOnly = true, requireActive = true} = {}) {
     return room.find(FIND_MY_SPAWNS, {
         filter: s => !s.spawning
+                  && !s.intentSent
                   && (!requireActive || s.isActive())
                   && (!primaryOnly || s.name == room.name),
     }).shift();

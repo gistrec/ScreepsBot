@@ -27,7 +27,13 @@ exports.transferLinkEnergy = function(room) {
 
         for (const source of cfg.sources) {
             if (source.store.getUsedCapacity(RESOURCE_ENERGY) != 800) continue;
-            source.transferEnergy(target);
+            // Один интент на линк за тик (см. prototypes/structure.js): source, уже отправивший
+            // в другой target, пропускаем. Полный source доводит target до ~776-779 (движок режет
+            // amount по свободному месту и снимает 3 % с target'а) - это выше порога 200; второму
+            // source'у достался бы только остаток ~24 ценой cooldown и неполного линка (<800 не
+            // проходит проверку выше, пока майнер не дольёт). После удачного transfer - следующий target.
+            if (source.intentSent) continue;
+            if (source.transferEnergy(target) == OK) break;
         }
     }
 }

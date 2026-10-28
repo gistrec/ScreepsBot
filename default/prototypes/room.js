@@ -95,7 +95,8 @@ Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEG
         console.log(`[${this.name}] Terminal not found`);
         return ERR_NOT_FOUND;
     }
-    if (this.terminal.cooldown) {
+    // cooldown - снимок начала тика; send этого тика ловит intentSent (prototypes/structure.js).
+    if (this.terminal.cooldown || this.terminal.intentSent) {
         return ERR_TIRED;
     }
     if (!Game.rooms[target_room] || !Game.rooms[target_room].terminal) {

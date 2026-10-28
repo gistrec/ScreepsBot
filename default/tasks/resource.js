@@ -141,7 +141,10 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
               + (room.storage  ? room.storage.store.getUsedCapacity(resourceType)  : 0);
     if (have >= need) return true;
 
-    if (room.terminal.cooldown > 0) return false;
+    // cooldown - снимок начала тика; send этого тика (lab/balanceEnergy идут раньше powerBank в
+    // main.js) ловит intentSent (prototypes/structure.js): процессор применяет send раньше deal,
+    // ставит cooldown, и deal после него молча не исполняется (global-intents/market.js).
+    if (room.terminal.cooldown > 0 || room.terminal.intentSent) return false;
 
     const shortfall = need - have;
     if (room.terminal.store.getFreeCapacity() < shortfall) {

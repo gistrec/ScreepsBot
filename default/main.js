@@ -13,6 +13,7 @@
 require('prototypes/creep');
 require('prototypes/others');
 require('prototypes/room');
+require('prototypes/structure');
 
 const roleMiner     = require('roles/miner');
 const roleScout     = require('roles/scout');

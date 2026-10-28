@@ -1,9 +1,38 @@
 const taskRoom = require('./room');
 const utils = require('../utils');
 
-// Структуры, которые ремонтируются каким-либо ботом
-exports.repairing_structures = [];
+// Структуры, которые прямо сейчас чинит какой-либо крип комнаты (id из memory.repairing).
+// Per-tick Set на room.cache. Раньше был глобальный массив, из которого id уходил только
+// когда тот же крип дочинивал цель: смерть крипа или rebalance (перезапись memory.repairing)
+// оставляли id навсегда, и структура выпадала из startRepairClosestStructs до сброса global.
+exports.repairingIds = function(room) {
+    return room.cache('repairingIds', r => new Set(
+        r.find(FIND_MY_CREEPS).map(c => c.memory.repairing).filter(Boolean)
+    ));
+}
 exports.charging_structures = [];
+
+// Целевые hits рампартов в мирное время до RCL 8. hitsMax рампарта - от 300k (RCL 2) до
+// 300M (RCL 8), «чинить до hitsMax» на RCL<8 означает никогда не дойти до upgradeController.
+// Башни чинят барьеры ниже порога 15k/100k (defend.fireTower, когда не заняты heal/attack),
+// апгрейдеры доводят до этой цели. На RCL 8 и в осаде потолка нет (hitsMax) - как и было.
+// Стены (STRUCTURE_WALL) сейчас никто не планирует к ремонту; ветка ниже - только чтобы
+// ручная цель-стена не чинилась до 300M. Переопределение: room.memory.rampart_target_hits.
+const RAMPART_TARGET_HITS = {1: 0, 2: 10000, 3: 30000, 4: 100000, 5: 300000, 6: 1000000, 7: 3000000};
+
+exports.repairTargetHits = function(structure) {
+    if (structure.structureType != STRUCTURE_RAMPART && structure.structureType != STRUCTURE_WALL) {
+        return structure.hitsMax;
+    }
+    const room = structure.room;
+    const level = room.controller ? room.controller.level : 0;
+    if (room.isDefending || room.hasHostiles || level == 8) return structure.hitsMax;
+
+    const target = room.memory.rampart_target_hits !== undefined
+        ? room.memory.rampart_target_hits
+        : (RAMPART_TARGET_HITS[level] || 0);
+    return Math.min(structure.hitsMax, target);
+}
 
 exports.hasHealingCreeps = function(spawn) {
     const creep = spawn.pos.findInRange(FIND_MY_CREEPS, 2, {
@@ -103,34 +132,31 @@ exports.startRepairClosestStructs = function(creep, types, full_health = false) 
     const byType = utils.getStructuresByType(creep.room);
     const candidates = types.flatMap(t => byType[t] || []);
 
+    const repairing = exports.repairingIds(creep.room);
     const target = creep.pos.findClosestByRange(candidates, {
-        filter: (s) => exports.repairing_structures.includes(s.id) == false
-                    && ((full_health) ? (s.hits < s.hitsMax * 0.99) : (s.hits < s.hitsMax * 0.5))
+        filter: (s) => !repairing.has(s.id)
+                    && s.hits < exports.repairTargetHits(s) * (full_health ? 0.99 : 0.5)
                     && s.hits > 0
     });
     if (!target) return ERR_NOT_FOUND;
 
     creep.memory.repairing  = target.id;
-    exports.repairing_structures.push(target.id)
+    repairing.add(target.id);
 
     return exports.repairTarget(creep, target);
 }
 
 exports.continueRepairStructure = function(creep) {
     if (creep.memory.repairing) {
-        if (!exports.repairing_structures.includes(creep.memory.repairing)) {
-            exports.repairing_structures.push(creep.memory.repairing)
-        }
-
         const target_id = creep.memory.repairing;
         const target = Game.getObjectById(target_id);
         // В осаде бросаем недоремонт всего, кроме рампартов - чтобы не торчать снаружи стен.
         const dropOnDefend = creep.room.isDefending && target && target.structureType != STRUCTURE_RAMPART;
-        if (target && target.hits < target.hitsMax && !dropOnDefend) {
+        if (target && target.hits < exports.repairTargetHits(target) && !dropOnDefend) {
             return exports.repairTarget(creep, target);
         } else {
             delete creep.memory.repairing;
-            _.remove(exports.repairing_structures, id => id == target_id);
+            exports.repairingIds(creep.room).delete(target_id);
         }
     }
     return ERR_NOT_FOUND;

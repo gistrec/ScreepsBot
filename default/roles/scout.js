@@ -48,6 +48,7 @@ const roleClaimer = {
         if (creep.fatigue != 0) return;
 
         const expand = Game.flags['Expand'];
+        if (!expand) return;
 
         // Move to expand room.
         if (expand.room == undefined || expand.room != creep.room) {

@@ -111,7 +111,7 @@ const roleRemoteUpgrader = {
             // if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
 
             const target = sources.get(creep);
-            if (target.energy && taskResource.harvestTarget(creep, target) == OK) return;
+            if (target && target.energy && taskResource.harvestTarget(creep, target) == OK) return;
 
             // if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
         } else {

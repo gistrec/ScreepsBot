@@ -1,5 +1,6 @@
 Error.prototype.log = function() {
-    const [, lineno, colno] = this.stack.match(/(\d+):(\d+)/);
+    const match = this.stack ? this.stack.match(/(\d+):(\d+)/) : null;
+    const [, lineno, colno] = match || [, '?', '?'];
     const msg =  `Error: ${this.message}\n${this.stack}\nLine ${lineno}, column ${colno}`;
     console.log(msg);
 }

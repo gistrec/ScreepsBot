@@ -597,6 +597,7 @@ exports.transferResource = function(creep) {
         if (max_resource_count_in_target && targetResourceCount > max_resource_count_in_target) {
             console.log(`[${creep.room.name}] Transfer of ${resource_type} using the creep ${creep.name} is completed - the target has ${targetResourceCount} resources.`);
             delete creep.memory.transfer;
+            return OK;
         }
 
         const sourceResourceCount = source.store.getUsedCapacity(resource_type);

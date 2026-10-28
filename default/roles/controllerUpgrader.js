@@ -19,8 +19,6 @@ const roleUpgrader = {
         }
 
         const upgraders = utils.creepsByRole(room, "controller_upgrader");
-        const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
-
 
         if (upgraders.length >= MAX_CREEPS_PER_ROOM) {
             return true;

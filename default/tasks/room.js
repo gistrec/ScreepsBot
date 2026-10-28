@@ -80,7 +80,7 @@ exports.renewCreeps = function(room) {
 
     const miners = utils.creepsByRole(room, "miner");
     const charger = utils.creepsByRole(room, "charger");
-    if (miners.length < 2 && charger.length < 2) {
+    if (miners.length < 2 || charger.length < 2) {
         return;
     }
 

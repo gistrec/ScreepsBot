@@ -10,7 +10,9 @@ const labResources = exports.labResources = {
     "W9S39":  ["LH", "OH"],
     "W8S36":  ["X",  "LH2O"],
     "W11S39": ["L",  "H"],
-    "W12S39": ["Z",  "H"],
+    "W12S37": ["U",  "H"],     // → UH; U из W13S37 (соседняя), H локально
+    "W13S37": ["UH", "OH"],    // → UH2O; UH из W12S37, OH из W9S37
+    "W12S39": ["X",  "UH2O"],  // → XUH2O; X из W8S36, UH2O из W13S37 (был Z+H→ZH, ZH никем не consume'ился)
 };
 
 // Авто-определение ролей лаб. Source-лаба обязана быть в range 2 от ВСЕХ остальных
@@ -68,13 +70,102 @@ const rooms = exports.rooms = {
     },
     "W12S39": {
         "mineral": "Z",
-        "require": ["Z", "H"],
-        "produce": "ZH",
+        "require": ["X", "UH2O"],
+        "produce": "XUH2O",
     },
     "W12S37": {
         "mineral": "H",
-        "require": [],
+        "require": ["U"],
+        "produce": "UH",
+    },
+    "W13S37": {
+        "mineral": "U",
+        "require": ["UH", "OH"],
+        "produce": "UH2O",
     }
+};
+
+// Планировщик цепочки реакций для нового продукта. Зови из консоли через объект
+// модуля (например: lab.planPipeline('XUH2O')). Раскладывает target в дерево реакций
+// через REACTIONS константу, помечает что уже работает / что mining'ится / что
+// отсутствует. Для каждой missing-реакции предлагает host-комнату с минимальной
+// linear distance до источников input'ов - чем ближе, тем дешевле transaction cost
+// терминала. Кандидаты - owned rooms без активной реакции в labResources.
+exports.planPipeline = function(target) {
+    // 1. Reverse-индекс: product -> [input1, input2].
+    const inputsOf = {};
+    for (const a in REACTIONS) {
+        for (const b in REACTIONS[a]) {
+            inputsOf[REACTIONS[a][b]] = [a, b];
+        }
+    }
+
+    // 2. Кто что добывает / производит.
+    const minedIn    = {};  // mineral -> [roomName]
+    const producedIn = {};  // product -> roomName
+    for (const name in rooms) {
+        const m = rooms[name].mineral;
+        if (m) (minedIn[m] = minedIn[m] || []).push(name);
+    }
+    for (const name in labResources) {
+        const [r1, r2] = labResources[name];
+        const p = REACTIONS[r1] && REACTIONS[r1][r2];
+        if (p) producedIn[p] = name;
+    }
+
+    // 3. Предложение host'а для отсутствующей реакции: candidate = owned-комната
+    // без активной реакции; минимизируем sum(linear distance) до источников inputs.
+    const candidateHosts = Object.keys(rooms).filter(r => !labResources[r]);
+    function suggestHost(inputs) {
+        const sources = inputs.map(i => producedIn[i] || (minedIn[i] && minedIn[i][0]));
+        if (sources.some(s => !s) || candidateHosts.length === 0) return null;
+        let best = null, bestDist = Infinity;
+        for (const c of candidateHosts) {
+            const d = sources.reduce((s, src) => s + Game.map.getRoomLinearDistance(c, src), 0);
+            if (d < bestDist) { bestDist = d; best = c; }
+        }
+        return best ? `${best} (dist=${bestDist})` : null;
+    }
+
+    // 4. Рекурсивный обход цепочки.
+    const missing = [];
+    const lines = [`[planPipeline] ${target}:`];
+    function walk(product, depth) {
+        const indent = '  '.repeat(depth);
+        const inputs = inputsOf[product];
+        if (!inputs) {
+            const mines = minedIn[product] || [];
+            const tag = mines.length ? `mined in ${mines.join(', ')}` : 'NOT MINED';
+            lines.push(`${indent}${mines.length ? '+' : '!'} ${product} (raw) - ${tag}`);
+            return;
+        }
+        const [a, b] = inputs;
+        const room = producedIn[product];
+        if (room) {
+            lines.push(`${indent}+ ${product} = ${a} + ${b}  [in ${room}]`);
+        } else {
+            const host = suggestHost([a, b]);
+            const hint = host ? `, suggest host: ${host}` : ', no free host';
+            lines.push(`${indent}! ${product} = ${a} + ${b}  [MISSING${hint}]`);
+            missing.push({product, inputs: [a, b], host});
+        }
+        walk(a, depth + 1);
+        walk(b, depth + 1);
+    }
+    walk(target, 0);
+
+    lines.push('');
+    if (missing.length) {
+        lines.push(`Missing: ${missing.length} reaction(s)`);
+        for (const m of missing) {
+            lines.push(`  ${m.product} = ${m.inputs.join(' + ')}${m.host ? ` → ${m.host}` : ''}`);
+        }
+    } else {
+        lines.push('All reactions in place.');
+    }
+
+    console.log(lines.join('\n'));
+    return missing;
 };
 
 // Шаги:

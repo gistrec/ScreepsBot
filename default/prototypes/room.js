@@ -34,15 +34,15 @@ Object.defineProperty(Room.prototype, 'isDefending', {
 });
 
 Room.prototype.transfer = function(resource_type, source_id, target_id, max_resource_count_in_target = null, min_resource_count_in_source = null) {
-    if (source_id == "terminal") source_id = this.terminal.id;
-    if (source_id == "storage")  source_id = this.storage.id;
+    if (source_id == "terminal") source_id = this.terminal ? this.terminal.id : null;
+    if (source_id == "storage")  source_id = this.storage ? this.storage.id : null;
     if (source_id == "factory") {
         const factory = this.getFactory();
         if (factory) source_id = factory.id;
     }
 
-    if (target_id == "terminal") target_id = this.terminal.id;
-    if (target_id == "storage")  target_id = this.storage.id;
+    if (target_id == "terminal") target_id = this.terminal ? this.terminal.id : null;
+    if (target_id == "storage")  target_id = this.storage ? this.storage.id : null;
     if (target_id == "factory") {
         const factory = this.getFactory();
         if (factory) target_id = factory.id;

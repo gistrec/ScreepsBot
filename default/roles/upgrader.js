@@ -60,7 +60,12 @@ const roleUpgrader = {
         const role = 'upgrader';
         const name = 'Upgrader' + Game.time;
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, boost}, energyStructures});
+        const result = spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, boost}, energyStructures});
+        if (result !== OK) {
+            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
+            return !utils.isTransientSpawnError(result);
+        }
         console.log(`[${room.name}] Spawning new ${role} ${name}`);
         return false;
     },

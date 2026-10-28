@@ -89,7 +89,12 @@ const roleMiner = {
         const miningPower = creepConfiguration["miningPower"];
         const source_id = targetSource.id;
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, miningPower, source_id }, energyStructures});
+        const result = spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, miningPower, source_id }, energyStructures});
+        if (result !== OK) {
+            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
+            return !utils.isTransientSpawnError(result);
+        }
         console.log(`[${room.name}] Spawning new ${role} ${name} for source ${source_id}`);
 
         return false;

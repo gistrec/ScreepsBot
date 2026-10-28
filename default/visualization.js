@@ -1,5 +1,6 @@
 const lab = require('modules/lab');
 const buildModule = require('modules/build');
+const resourceBalance = require('modules/resourceBalance');
 const utils = require('utils');
 
 // Однобуквенные коды структур из modules/build.js (см. const B/R/S/E/T/L/M/C/F/N/O/P/H).
@@ -344,7 +345,7 @@ visualiseRoom = function(room) {
     updateEnergyEMA(room);
     const stats = room.memory.energy_stats;
     const totalE = room.getTotalEnergy();
-    const parts = [`🏦 ${formatEnergyCompact(totalE)}`];
+    const parts = [`🔋 ${formatEnergyCompact(totalE)}`, 'net e/t'];
     if (stats) {
         for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
             const w = ENERGY_WINDOWS[i];
@@ -410,7 +411,8 @@ visualiseMap = function(room) {
     // Компактная энерго-статистика: total + 3 окна EWMA без лейблов.
     // EMA уже посчитан в visualiseRoom (визуализация процессит rooms в порядке room->map).
     const stats = room.memory.energy_stats;
-    const energyParts = [`🏦${formatEnergyCompact(room.getTotalEnergy())}`];
+    // Δ = изменение запаса за тик (net e/t), знак +/- читается на самих числах.
+    const energyParts = [`🔋${formatEnergyCompact(room.getTotalEnergy())}`, 'Δ'];
     if (stats) {
         for (let i = 0; i < ENERGY_WINDOWS.length; i++) {
             energyParts.push(stats.samples >= ENERGY_WINDOWS[i].warmup ? formatRate(stats.ema[i]) : '—');
@@ -433,6 +435,13 @@ visualiseMap = function(room) {
     cpuParts.push('b' + formatBucket(Game.cpu.bucket));
     const cpuColor = Game.cpu.bucket < 3000 ? '#ff6666' : '#ffffff';
     Game.map.visual.text(cpuParts.join(' '), new RoomPosition(0, 22, room.name), {align: 'left', fontSize: 6, color: cpuColor});
+
+    // Богатая/бедная комната - та же метрика, что в resourceBalance (запас энергии).
+    // Зелёный = богатая (делится), красный = бедная (нужна энергия), серый = норма.
+    // ⚡ с U+FE0E (text-presentation), чтобы рендерер не подменял на цветной emoji и color применялся.
+    const wealth = resourceBalance.classifyEnergy(room);
+    const wealthColor = wealth === 'rich' ? '#00FF00' : wealth === 'poor' ? '#FF4444' : '#AAAAAA';
+    Game.map.visual.text("⚡︎", new RoomPosition(49, 34, room.name), {color: wealthColor, align: 'right', fontSize: 10});
 
     // Defending indicator - аналог nuker'а: иконка слева от ☢, цветом отличаем состояние.
     // Красный = под атакой, зелёный = мир. Символ без FE0F (text-presentation), чтобы color

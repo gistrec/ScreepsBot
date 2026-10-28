@@ -229,6 +229,78 @@ function buildContainersNearSources(room) {
 }
 exports.buildContainersNearSources = buildContainersNearSources;
 
+// Source-link тоже динамический (зависит от позиций source-контейнеров). На RCL 5
+// доступно 2 линка, схема ставит только storage-link в (6,5) - второй слот нужен
+// для source. На RCL 6+ - оба source имеют свои линки. Ставим адъ. к контейнеру
+// (range 1 от контейнера = range ≤ 2 от source → miner.transferEnergy работает).
+// Делаем 1 site за вызов чтобы не плодить пачку конструкций одновременно.
+function buildLinksNearSources(room) {
+    if (room.controller.level < 5) return;
+    const allowed = CONTROLLER_STRUCTURES[STRUCTURE_LINK][room.controller.level];
+    if (!allowed) return;
+
+    const existingLinks = utils.getMyStructuresByType(room)[STRUCTURE_LINK] || [];
+    const existingSites = room.find(FIND_CONSTRUCTION_SITES, {
+        filter: s => s.structureType === STRUCTURE_LINK,
+    });
+    if (existingLinks.length + existingSites.length >= allowed) return;
+
+    const sources = utils.getSources(room);
+    const anchor  = room.storage || room.find(FIND_MY_SPAWNS).shift();
+    if (!anchor) return;
+
+    // Сорсы с самой дальней дистанцией от storage получают линк в первую очередь -
+    // там carry-цепочка длиннее и линк даёт наибольший profit.
+    const ordered = sources.slice().sort((a, b) =>
+        b.pos.getRangeTo(anchor) - a.pos.getRangeTo(anchor)
+    );
+
+    const terrain = room.getTerrain();
+    for (const source of ordered) {
+        // Уже есть линк или site у source - пропускаем.
+        const hasLink = existingLinks.some(l => l.pos.inRangeTo(source, 2))
+                     || existingSites.some(s => s.pos.inRangeTo(source, 2));
+        if (hasLink) continue;
+
+        // Контейнер должен быть на месте: miner.transferEnergy идёт со стояния на нём.
+        const container = source.pos.findInRange(FIND_STRUCTURES, 1, {
+            filter: s => s.structureType === STRUCTURE_CONTAINER,
+        })[0];
+        if (!container) continue;
+
+        const candidates = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const x = container.pos.x + dx;
+                const y = container.pos.y + dy;
+                if (x < 1 || x > 48 || y < 1 || y > 48) continue;
+                if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+                const pos = new RoomPosition(x, y, room.name);
+                // Линк должен быть в range 2 от source чтобы miner мог transferEnergy.
+                if (!pos.inRangeTo(source, 2)) continue;
+                // Не строимся поверх существующих non-rampart структур / сайтов.
+                if (pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType !== STRUCTURE_RAMPART)) continue;
+                if (pos.lookFor(LOOK_CONSTRUCTION_SITES).length > 0) continue;
+                candidates.push(pos);
+            }
+        }
+        if (candidates.length === 0) {
+            console.log(`[${room.name}][BUILD] No spot for link near source ${source.id}`);
+            continue;
+        }
+        const best = anchor.pos.findClosestByPath(candidates) || candidates[0];
+        const result = room.createConstructionSite(best, STRUCTURE_LINK);
+        if (result === OK) {
+            console.log(`[${room.name}][BUILD] Link site at ${best.x}:${best.y} for source ${source.id}`);
+        } else {
+            console.log(`[${room.name}][BUILD] createConstructionSite link failed: ${result} ${result.toStringStatus()}`);
+        }
+        return; // 1 site per call.
+    }
+}
+exports.buildLinksNearSources = buildLinksNearSources;
+
 // Extractor лежит на минерале - привязка к фиксированным координатам в schemes[]
 // невозможна (минерал в каждой комнате в своём месте). Ставим его отдельно по
 // результату FIND_MINERALS. RCL 6+.
@@ -241,15 +313,96 @@ function buildExtractor(room) {
     room.createConstructionSite(mineral.pos, STRUCTURE_EXTRACTOR);
 }
 
+// Terrain-derived: кешируем по roomName на global. Terrain immutable в Screeps,
+// инвалидировать никогда не нужно. Global reset (после деплоя/restart'а) очистит
+// и пересчитает на первом обращении.
+const dangerSetCache = {};
+
+function getDangerSet(room) {
+    if (!dangerSetCache[room.name]) {
+        dangerSetCache[room.name] = computeDangerSet(room.getTerrain());
+    }
+    return dangerSetCache[room.name];
+}
+
+// Тайлы, на которые враг может либо встать, либо ударить ranged-attack'ом.
+// Stage 1: BFS от краёв комнаты через walkable - где enemy может физически стоять.
+// Stage 2: dilate на 3 клетки игнорируя стены - rangedAttack/rangedMassAttack бьют
+// на range 3 СКВОЗЬ стены (в Screeps range-based, не line-of-sight). Структура за
+// стеной но в 3 клетках от walkable - всё равно под обстрелом, нужен рампарт.
+// Возвращает Uint8Array[2500] - 1 = под угрозой, 0 = неприступно.
+function computeDangerSet(terrain) {
+    const danger = new Uint8Array(50 * 50);
+    let queue = [];
+    let head = 0;
+
+    // Stage 1: BFS walkable от ребёр комнаты.
+    for (let i = 0; i < 50; i++) {
+        for (const [x, y] of [[i, 0], [i, 49], [0, i], [49, i]]) {
+            if (terrain.get(x, y) === TERRAIN_MASK_WALL) continue;
+            const idx = y * 50 + x;
+            if (danger[idx]) continue;
+            danger[idx] = 1;
+            queue.push(idx);
+        }
+    }
+    while (head < queue.length) {
+        const idx = queue[head++];
+        const x = idx % 50;
+        const y = (idx - x) / 50;
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
+                const nidx = ny * 50 + nx;
+                if (danger[nidx]) continue;
+                if (terrain.get(nx, ny) === TERRAIN_MASK_WALL) continue;
+                danger[nidx] = 1;
+                queue.push(nidx);
+            }
+        }
+    }
+
+    // Stage 2: dilate на 3 клетки игнорируя стены (ranged-attack сквозь стены).
+    // BFS с глубиной: re-enqueue только walkable-frontier (depth 0), новые тайлы
+    // получают depth+1, остановка на depth=3.
+    let frontier = queue.slice(0, head);  // все walkable, depth 0
+    for (let depth = 1; depth <= 3; depth++) {
+        const next = [];
+        for (const idx of frontier) {
+            const x = idx % 50;
+            const y = (idx - x) / 50;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || nx > 49 || ny < 0 || ny > 49) continue;
+                    const nidx = ny * 50 + nx;
+                    if (danger[nidx]) continue;
+                    danger[nidx] = 1;
+                    next.push(nidx);
+                }
+            }
+        }
+        frontier = next;
+    }
+    return danger;
+}
+
 // Рампарты по периметру базы 3-клеточной полосой (layer 0 - граница 13×13 schemes,
 // layer 1/2 - две внутренние "обоймы"). Ставим только при RCL 8: на меньших уровнях
 // нет energy-budget'а на поддержание ~120 рампартов через decay/towers.
 // Ramparts могут наслаиваться поверх любых structure - createConstructionSite сработает
-// и на extension/tower/lab; на terrain wall - пропускаем.
+// и на extension/tower/lab; на terrain wall - пропускаем. Также пропускаем тайлы,
+// отрезанные стенами от краёв комнаты (враг туда не дойдёт).
 function buildRamparts(room, spawn) {
     if (room.controller.level < 8) return;
 
     const terrain = room.getTerrain();
+    const danger = getDangerSet(room);
     const SIZE = 13;
     const LAYERS = 3;
 
@@ -262,6 +415,8 @@ function buildRamparts(room, spawn) {
             const py = spawn.pos.y + y - spawn_offset_y;
             if (px < 1 || px > 48 || py < 1 || py > 48) continue;
             if (terrain.get(px, py) === TERRAIN_MASK_WALL) continue;
+            // Тайл недостижим для enemy: ни walkable доступа, ни ranged-attack в range 3.
+            if (!danger[py * 50 + px]) continue;
 
             const pos = new RoomPosition(px, py, room.name);
             if (pos.lookFor(LOOK_STRUCTURES).some(s => s.structureType == STRUCTURE_RAMPART)) continue;
@@ -366,6 +521,8 @@ exports.process = function() {
         // максимально рано (на RCL 2 миннер без CARRY дропает энергию в пустоту).
         if (Game.time % 50 === 0) {
             buildContainersNearSources(room);
+            // Source-link строится после контейнера, ставит 1 site за вызов.
+            buildLinksNearSources(room);
         }
     }
 }

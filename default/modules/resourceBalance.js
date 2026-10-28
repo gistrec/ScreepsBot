@@ -247,20 +247,37 @@ exports.balanceEnergy = function() {
         compressEnergy(room);
     }
 
+    // Поступления, запланированные в этом проходе, по комнатам-получателям. Store получателя
+    // обновится только в следующем тике, поэтому без учёта все доноры выбирают одну и ту же
+    // беднейшую комнату и переполняют её терминал (движок режет send по свободному месту, а в
+    // логе при этом "sent"). Единицы ресурса - под свободное место терминала, энергия
+    // (батарейки ×10) - под сортировку по запасу.
+    const planned = {};
+    const planIncoming = (room, units, energy) => {
+        const p = planned[room.name] || (planned[room.name] = {units: 0, energy: 0});
+        p.units  += units;
+        p.energy += energy;
+    };
+    const plannedTotalEnergy  = room => room.getTotalEnergy() + (planned[room.name] ? planned[room.name].energy : 0);
+    const plannedTerminalFree = room => room.terminal.store.getFreeCapacity() - (planned[room.name] ? planned[room.name].units : 0);
+
     // Шлём энергию из богатых комнат самым нуждающимся.
     for (const richRoom of richRooms) {
         // Подкладываем батарейки в терминал, чтобы было чем дёшево делиться.
         stageBatteriesForExport(richRoom);
 
-        // Беднейшие (по суммарному запасу) первыми.
+        // Беднейшие (по суммарному запасу с учётом уже запланированного) первыми.
         const sortedPoorRooms = poorRooms.slice().sort((a, b) => {
-            return a.getTotalEnergy() - b.getTotalEnergy();
+            return plannedTotalEnergy(a) - plannedTotalEnergy(b);
         });
         for (const poorRoom of sortedPoorRooms) {
             // Terminal has 10-tick cooldown after each send - only one send per rich room per tick.
-            if (richRoom.terminal.cooldown) break;
+            // cooldown - снимок начала тика: send из lab.transferResourcesBetweenRooms в этом же
+            // тике (%300, lab идёт раньше в main.js) в нём не виден - его ловит intentSent
+            // (см. prototypes/structure.js), иначе мы перезаписывали отправку минералов.
+            if (richRoom.terminal.cooldown || richRoom.terminal.intentSent) break;
 
-            if (poorRoom.terminal.store.getFreeCapacity() < POOR_RECEIVE_FREE) {
+            if (plannedTerminalFree(poorRoom) < POOR_RECEIVE_FREE) {
                 continue
             }
 
@@ -270,6 +287,7 @@ exports.balanceEnergy = function() {
                 const amount = Math.min(donorBatteries, MAX_BATTERY_SEND);
                 if (richRoom.terminal.send(RESOURCE_BATTERY, amount, poorRoom.name) == OK) {
                     console.log(`[EnergyBalance] Sent ${amount} batteries (~${amount * 10} energy) ${richRoom.name} -> ${poorRoom.name}`);
+                    planIncoming(poorRoom, amount, amount * 10);
                     break;
                 }
             }
@@ -286,6 +304,7 @@ exports.balanceEnergy = function() {
             }
 
             if (richRoom.sendEnergy(poorRoom.name, transferAmount) == OK) {
+                planIncoming(poorRoom, transferAmount, transferAmount);
                 break;
             }
         }

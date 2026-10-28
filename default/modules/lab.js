@@ -484,6 +484,15 @@ exports.transferResourcesBetweenRooms = function() {
             const targetRoomMineralCount = stockOf(room, requireMineral);
             if (targetRoomMineralCount > 5000) continue;
 
+            // send() не смотрит на получателя: движок режет перевод по свободному месту его
+            // терминала (global-intents/market.js), при полном терминале это no-op без cooldown,
+            // а send() всё равно вернул OK. Не занимаем терминал-источник пустой отправкой -
+            // пусть обслужит другого получателя.
+            if (room.terminal.store.getFreeCapacity() < 10000) {
+                console.log(`[${roomName}][LAB] Terminal has no room for 10k ${requireMineral} (free ${room.terminal.store.getFreeCapacity()})`);
+                continue;
+            }
+
             // Ищем комнату, в которой производится необходимый ресурс.
             const sourceRoom = findRoomWithMineral(requireMineral, roomName);
             if (!sourceRoom) {
@@ -498,12 +507,19 @@ exports.transferResourcesBetweenRooms = function() {
             // Нужно либо переместить ресурсы из терминала, либо сначала заполнить терминал из хранилища.
             const sourceTerminalMineralCount = sourceRoom.terminal.store.getUsedCapacity(requireMineral);
             if (sourceTerminalMineralCount > 10000) {
-                if (sourceRoom.terminal.cooldown) {
+                // cooldown - снимок начала тика: send, уже отданный этому терминалу в этом же
+                // проходе (одна комната снабжает нескольких получателей), в нём не виден -
+                // его ловит intentSent (см. prototypes/structure.js).
+                if (sourceRoom.terminal.cooldown || sourceRoom.terminal.intentSent) {
                     // Терминал на перезарядке - попробуем в следующем проходе.
                     continue;
                 }
+                const result = sourceRoom.terminal.send(requireMineral, 10000, roomName);
+                if (result != OK) {
+                    console.log(`[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName} failed: ${result.toStringStatus()}`);
+                    continue;
+                }
                 console.log(`[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName}`);
-                sourceRoom.terminal.send(requireMineral, 10000, roomName)
             } else {
                 if (!sourceRoom.storage) continue;
                 console.log(`[${sourceRoom.name}][LAB] Transfer 10k ${requireMineral} from Storage to Terminal`);

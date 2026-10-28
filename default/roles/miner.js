@@ -131,6 +131,12 @@ const roleMiner = {
             }
         }
 
+        // Source из памяти; sources.get заодно перепроверяет протухшие container_id/link_id
+        // (контейнер отстроен заново или появился после спавна). Поэтому зовём ДО чтения
+        // контейнера и до isFull-ветки: майнер с полным трюмом и мёртвым container_id раньше
+        // уходил в "💤Full" и до sources.get в конце run() не доходил никогда.
+        const target = sources.get(creep);
+
         // Двигаемся к контейнеру.
         const container = Game.getObjectById(creep.memory.container_id);
         if (container && !creep.pos.isEqualTo(container)) {
@@ -143,19 +149,26 @@ const roleMiner = {
         }
 
         const link = Game.structures[creep.memory.link_id];
-        const linkFull = !link || link.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
+        // Линк годится, только если до него дотянуться с места (transfer - range 1). sources.js
+        // ищет линк в range 2 от source, что не гарантирует range 1 от контейнера: с контейнера
+        // transfer даёт ERR_NOT_IN_RANGE, fillTarget уводит майнера к линку, следующий тик
+        // moveTo(container) выше возвращает - осцилляция без единого харвеста. Без контейнера
+        // майнер к клетке не привязан, дойти до линка допустимо (как и раньше).
+        const linkUsable = link && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+            && (!container || creep.pos.isNearTo(link));
         const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
         const carryCap = creep.store.getCapacity(RESOURCE_ENERGY) || 0;
         const isFull = carryCap > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;
 
-        // Полный трюм - перед харвестом разгружаемся, иначе creep.harvest() сольёт overflow
-        // на пол. Screeps "auto-overflow в контейнер" работает только когда контейнер РЯДОМ
-        // (range 1), а майнер стоит ON контейнере (same tile) - там overflow не срабатывает.
+        // Полный трюм - перед харвестом разгружаемся. Overflow harvest()'а движок кладёт в
+        // контейнер на клетке майнера (engine: harvest.js -> drop -> _create-energy: сначала
+        // container по x/y крипа, остаток - на пол). Явный transfer нужен ради линка (туда
+        // overflow не идёт) и чтобы не дропать на пол при забитом контейнере.
         // Приоритет link > container: link сам пушит на дальний приёмник (storage/upgrader),
         // контейнер требует чарджера. При забитом линке чарджер вообще не нужен этой ветке.
         if (isFull) {
             // 1. Линк со свободным местом.
-            if (link && !linkFull) {
+            if (linkUsable) {
                 taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
                 return;
             }
@@ -192,13 +205,20 @@ const roleMiner = {
         // Приоритет если харвестить нельзя: линк > контейнер > апгрейд. Линк лучше контейнера
         // (см. isFull-комментарий выше), оба лучше апгрейда (апгрейдить контроллер можно из
         // любой комнаты, а заполнить локальный линк/контейнер - только мы).
-        const target = sources.get(creep);
         const harvestPerTick = creep.body.filter(p => p.type === WORK).length * HARVEST_POWER;
-        const canFitHarvest = creep.store.getFreeCapacity(RESOURCE_ENERGY) >= harvestPerTick;
+        // Drop-miner (550e config, без CARRY): трюма нет, freeCap всегда 0 - проверка по трюму
+        // навсегда запрещала харвест, крип весь TTL стоял на контейнере без дела (и считался
+        // в sourcesCount, так что замену не спавнили). Его harvest() кладёт энергию в контейнер
+        // под ногами (см. комментарий к isFull), без контейнера - на пол, откуда подбирает
+        // чарджер (needsChargers в utils.js это и подразумевает). "Место в трюме" для него -
+        // место в контейнере; без storage сыплем и при забитом (как п.3 выше для CARRY).
+        const canFitHarvest = carryCap > 0
+            ? creep.store.getFreeCapacity(RESOURCE_ENERGY) >= harvestPerTick
+            : !container || !creep.room.storage || container.store.getFreeCapacity(RESOURCE_ENERGY) >= harvestPerTick;
         const hasEnergy = creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0;
         if (target && target.energy > 0 && canFitHarvest) {
             taskResource.harvestTarget(creep, target);
-        } else if (hasEnergy && link && !linkFull) {
+        } else if (hasEnergy && linkUsable) {
             taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
         } else if (hasEnergy && containerUsable) {
             creep.transfer(container, RESOURCE_ENERGY);

@@ -181,11 +181,12 @@ exports.planPipeline = function(target) {
 // освобождается и тут же снова забивается. Override per-room через memory.
 const DEFAULT_LAB_STUCK_EVAC_DELAY = 500;
 
-// Лабы, занятые активным буст-таском (powerBank attacker/healer и т.п.) - lab.js должен
-// пропускать их в runReaction/forceEvacuateLabs, иначе runReaction дампит boost-минерал
-// сразу после того как чарджер его залил. Реквизит - creep.memory.boost_force=true и
-// creep.memory.lab_id указывает на target-лабу.
-// Кешируем по тику: каждый из 5 лаб-комнат зовёт это в runReaction, ещё раз
+// Лабы, занятые активным boost-таском (creep.memory.lab_id) - lab.js должен пропускать их
+// в runReaction/forceEvacuateLabs, иначе runReaction дампит boost-минерал сразу после
+// заливки или доливает продукт в лабу, которую крип опустошает. Раньше учитывались только
+// boost_force; теперь target-лабы берут все бусты (см. boost.js). Инвариант: lab_id без
+// boost/unboost не живёт дольше тика - checkBoost чистит его при отсутствии задачи.
+// Кешируем по тику: каждый из 7 лаб-комнат зовёт это в runReaction, ещё раз
 // в forceEvacuateLabs - иначе 10+ пробегов по Game.creeps (~100 крипов) на тик.
 let boostReservedCache = {tick: -1, ids: null};
 
@@ -194,7 +195,7 @@ function getBoostReservedLabIds() {
     const ids = new Set();
     for (const name in Game.creeps) {
         const c = Game.creeps[name];
-        if (c.memory.boost_force && c.memory.lab_id) {
+        if (c.memory.lab_id) {
             ids.add(c.memory.lab_id);
         }
     }

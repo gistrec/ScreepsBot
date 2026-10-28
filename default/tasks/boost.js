@@ -5,11 +5,12 @@ const utils        = require('utils');
 // Zero-CARRY крипы (powerBank attacker/healer) не могут сами перевозить ресурсы -
 // делегируем заполнение/выгрузку лабы чарджеру через room.transfer. Перед каждой
 // шедулировкой проверяем, нет ли уже такого таска (иначе переназначим каждый тик).
+// sourceId == null - любой источник (для fill: склад может смениться между тиками).
 function isChargerBusyWith(room, sourceId, targetId, resourceType) {
     return room.find(FIND_MY_CREEPS, {
         filter: c => c.memory.role == 'charger'
                   && c.memory.transfer
-                  && c.memory.transfer.source_id == sourceId
+                  && (!sourceId || c.memory.transfer.source_id == sourceId)
                   && c.memory.transfer.target_id == targetId
                   && c.memory.transfer.resource_type == resourceType
     }).length > 0;
@@ -19,22 +20,30 @@ function hasFreeCharger(room) {
     return utils.creepsByRole(room, "charger").some(c => !c.memory.transfer);
 }
 
-function findResourceSource(room, resourceType, minAmount) {
-    for (const s of [room.storage, room.terminal]) {
-        if (s && s.store.getUsedCapacity(resourceType) >= minAmount) return s;
-    }
-    return null;
+// Склад с наибольшим запасом ресурса. Весь объём в одном складе не требуем:
+// ensureBoostMinerals/buyMineralForBoost считают storage+terminal суммарно, а market.deal
+// докладывает только shortfall в терминал - иначе "⏳Wait fill" навсегда. Когда склад
+// опустеет, transfer-task удалится (см. transferResource) и следующий вызов возьмёт остаток
+// из второго.
+function findResourceSource(room, resourceType) {
+    const stores = [room.storage, room.terminal].filter(s => s && s.store.getUsedCapacity(resourceType) > 0);
+    return stores.length ? _.max(stores, s => s.store.getUsedCapacity(resourceType)) : null;
 }
 
 function chargerFillLab(creep, lab, resourceType, totalAmount) {
     if (!creep.pos.isNearTo(lab)) {
         creep.moveTo(lab, {visualizePathStyle: {stroke: '#0000FF'}, maxRooms: 1});
     }
-    const source = findResourceSource(creep.room, resourceType, totalAmount - lab.store.getUsedCapacity(resourceType));
+    // Проверка занятости - до выбора склада: если "самый полный" склад сменился, пока чарджер
+    // едет, не назначаем второго на ту же лабу.
+    if (isChargerBusyWith(creep.room, null, lab.id, resourceType)) return;
+    const source = findResourceSource(creep.room, resourceType);
     if (!source) return;
-    if (isChargerBusyWith(creep.room, source.id, lab.id, resourceType)) return;
     if (!hasFreeCharger(creep.room)) return;
-    creep.room.transfer(resourceType, source.id, lab.id, totalAmount);
+    // transferResource закрывает задачу по `target > max`: с totalAmount-1 первый же рейс,
+    // доводящий лабу до нужного объёма, завершает задачу - без лишнего рейса и перелива
+    // в типичном случае (склад с запасом >= need).
+    creep.room.transfer(resourceType, source.id, lab.id, totalAmount - 1);
 }
 
 function chargerEvacLab(creep, lab, resourceType) {
@@ -56,6 +65,18 @@ function chargerEvacLab(creep, lab, resourceType) {
     if (isChargerBusyWith(creep.room, lab.id, dest.id, resourceType)) return;
     if (!hasFreeCharger(creep.room)) return;
     creep.room.transfer(resourceType, lab.id, dest.id);
+}
+
+// Сброс "левого" груза CARRY-крипом: terminal -> storage. Оба физически полны - стоим и
+// логируем редко, как chargerEvacLab; на пол не выкидываем (минералы никто не подберёт).
+function dumpCargo(creep) {
+    if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
+    if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)  == OK) return OK;
+    if (Game.time % 100 == 0) {
+        console.log(`[${creep.room.name}][Boost] ${creep.name} can't dump cargo: terminal+storage full.`);
+    }
+    creep.say('🚧Stall');
+    return ERR_NOT_FOUND;
 }
 
 /**
@@ -109,6 +130,11 @@ exports.checkBoost = function(creep) {
     }
 
     if (!creep.memory.boost) {
+        // Нет задачи - lab_id висеть не должен: он резервирует лабу от реакций (lab.js) и
+        // прячет её от других бустеров (usedLabs). Сюда же попадают orphan'ы из старых версий.
+        // Исключение - unboost: checkUnboost (идёт следом) использует заранее заданный lab_id
+        // и сам удаляет его по завершении.
+        if (!creep.memory.unboost) delete creep.memory.lab_id;
         return ERR_NOT_FOUND;
     }
 
@@ -120,44 +146,51 @@ exports.checkBoost = function(creep) {
         return ERR_NOT_FOUND;
     }
 
-    // В активной осаде комбат-роли (upgrader/defender) пропускают boost: ехать на лабу
-    // = бросить рампарт под огнём. Запись creep.memory.boost не удаляем - как только
-    // осада закончится, креп заглянет в лабу при следующем тике.
-    if (creep.room.isUnderAttack && ['upgrader', 'defender'].includes(creep.memory.role)) {
-        return ERR_NOT_FOUND;
-    }
-
     // 1. Получаем лабораторию, с которой будем работать.
     const lab = (() => {
         if (creep.memory.lab_id) {
             return Game.getObjectById(creep.memory.lab_id);
         }
 
-        // Реакционные лабы (source/target) исключаем: они забиты минералами пайплайна,
-        // и step 3 boost'а вывалил бы их содержимое в терминал, ломая reaction loop.
-        // Исключение - boost_force: занимаем target-лабу под буст (lab.js пропускает её
-        // в runReaction пока creep.memory.lab_id указывает на неё). Source-лабы не трогаем
-        // никогда: refillLabs дозаливает их каждые 100 тиков, конфликт неизбежен.
+        // Source-лабы не трогаем никогда: refillLabs дозаливает их каждые 100 тиков, конфликт
+        // неизбежен. Target-лабы берём под любой буст (раньше исключались все реакционные лабы,
+        // и в лаб-комнатах свободных не оставалось - задача удалялась). lab.js пропускает лабу
+        // в runReaction/forceEvac, пока creep.memory.lab_id указывает на неё.
+        // Cooldown не фильтруем: boostCreep его не проверяет (ERR_TIRED в движке возвращают
+        // только runReaction/unboostCreep).
         const labConfig = labModule.getLabConfig(creep.room);
-        const reactionIds = new Set(labConfig ? [...labConfig.sources, ...labConfig.targets].map(l => l.id) : []);
-        const sourceIds   = new Set(labConfig ? labConfig.sources.map(l => l.id) : []);
+        const sourceIds = new Set(labConfig ? labConfig.sources.map(l => l.id) : []);
 
         const usedLabs = Object.keys(Game.creeps).map(creepName => Game.creeps[creepName].memory.lab_id).filter(x => x);
-        const lab = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
-            filter: (s) => {
-                if (s.structureType != STRUCTURE_LAB) return false;
-                if (usedLabs.includes(s.id)) return false;
-                if (creep.memory.boost_force) {
-                    // Cooldown игнорируем - спадёт пока чарджер заполняет лабу.
-                    return !sourceIds.has(s.id);
-                }
-                return s.cooldown == 0 && !reactionIds.has(s.id);
-            }
-        });
-        return lab;
+        // moduleLab.process идёт раньше checkBoost: runReaction мог уже поставить чарджеру
+        // выгрузку lab -> terminal/storage. Такую лабу не берём - чарджер продолжит её осушать
+        // во время заливки (резерв lab.js закроет её только со следующего тика).
+        const transferLabs = new Set();
+        for (const c of utils.creepsByRole(creep.room, "charger")) {
+            if (!c.memory.transfer) continue;
+            transferLabs.add(c.memory.transfer.source_id);
+            transferLabs.add(c.memory.transfer.target_id);
+        }
+        const candidates = (utils.getMyStructuresByType(creep.room)[STRUCTURE_LAB] || [])
+            .filter(s => !usedLabs.includes(s.id) && !sourceIds.has(s.id) && !transferLabs.has(s.id));
+
+        // Предпочитаем лабу без чужого минерала: иначе step 3 сначала выгружает остаток продукта
+        // реакции (CARRY-крип сам, по трюму за рейс). Чистых нет - берём наименее заполненную;
+        // под атакой - только если остаток влезает в 2 рейса, иначе бустить дороже, чем воевать
+        // (non-force: задача удалится ниже, крип идёт на рампарт без буста).
+        const clean = candidates.filter(s => !s.mineralType || s.mineralType == creep.memory.boost);
+        if (clean.length) return creep.pos.findClosestByRange(clean);
+        const dirty = creep.room.isUnderAttack
+            ? candidates.filter(s => s.store.getUsedCapacity(s.mineralType) <= 2 * creep.store.getCapacity())
+            : candidates;
+        if (dirty.length == 0) return null;
+        return _.min(dirty, s => s.store.getUsedCapacity(s.mineralType));
     })();
 
     if (!lab) {
+        // lab_id мог указывать на снесённую лабу - сбрасываем, иначе getObjectById возвращает
+        // null вечно: boost_force ждал бы до смерти, non-force терял бы и следующий буст очереди.
+        delete creep.memory.lab_id;
         // Под boost_force ждём - все таргет-лабы могут быть заняты другими бустерами.
         // Удалять boost task нельзя: powerBank-сквад без буста не пробьёт банк.
         if (creep.memory.boost_force) {
@@ -206,7 +239,7 @@ exports.checkBoost = function(creep) {
         // Перед тем как начать заполнять лабораторию энергией, нужно выкинуть все лишние ресурсы из трюма.
         // Нужно для того, чтобы как можно быстрее заполнить лабораторию.
         if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(RESOURCE_ENERGY)) {
-            taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL);
+            dumpCargo(creep);
             return OK;
         }
 
@@ -253,13 +286,12 @@ exports.checkBoost = function(creep) {
             taskResource.withdrawTarget(creep, lab, lab.mineralType);
         }else {
             // Терминал может быть забит (PowerBank-логика грузит его буст-минералами через
-            // market.deal + chargerEvac), поэтому falback на storage. Логируем редко, чтобы
+            // market.deal + chargerEvac), поэтому fallback на storage. Логируем редко, чтобы
             // не спамить во время длинного stall'а.
             if (Game.time % 100 == 0) {
                 console.log(`[${creep.room.name}][Boost] ${creep.name} transfer extra cargo (lab=${lab.mineralType || 'empty'})`)
             }
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
-            taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE);
+            dumpCargo(creep);
         }
         return OK;
     }
@@ -281,7 +313,7 @@ exports.checkBoost = function(creep) {
         // Перед тем как начать заполнять лабораторию энергией, нужно выкинуть все лишние ресурсы из трюма.
         // Нужно для того, чтобы как можно быстрее заполнить лабораторию.
         if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resourceType)) {
-            taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE);
+            dumpCargo(creep);
             return OK;
         }
 
@@ -339,6 +371,7 @@ exports.checkBoost = function(creep) {
         default:
             creep.say(`⚠️Error ${status}`)
             console.log(`[${creep.room.name}][Boost] ${creep.name} error ${status} ${status.toStringStatus()}. Boost task was deleted`)
+            delete creep.memory.lab_id
             delete creep.memory.boost
             return ERR_NOT_FOUND;
     }

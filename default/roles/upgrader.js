@@ -19,8 +19,12 @@ const roleUpgrader = {
     rebalanceRepairing: function(room) {
         const MAX_CREEPS_PER_WALL = room.hasHostiles ? 3 : 1;
 
-        const creeps = utils.creepsByRole(room, 'upgrader');
-        const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART })
+        // Link-апгрейдер ремонт не вызывает (run: сразу в контроллер) - цель ему не даём,
+        // иначе он держит рампарт в taskStructure.repairingIds, не чиня его.
+        const creeps = utils.creepsByRole(room, 'upgrader').filter(c => !c.memory.link_id);
+        // Рампарты уже в цели (RCL<8 мирно) не раздаём - крип их всё равно отпустит на следующем тике.
+        const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART
+                                                             && s.hits < taskStructure.repairTargetHits(s) })
                           .sort((lhv, rhv) => { return rhv.hits - lhv.hits; });
         for (const chunk of _.chunk(creeps, MAX_CREEPS_PER_WALL)) {
             const wall = walls.pop();
@@ -87,6 +91,8 @@ const roleUpgrader = {
             // С линком апгрейдер прикован к нему - сразу льёт в контроллер. Maintain-таск
             // (downgrade close) тоже приоритетнее всех остальных задач.
             if (creep.memory.link_id || creep.room.memory.need_maintain_controller) {
+                // Link-апгрейдер до ремонта не доходит - не держим за ним цель (repairingIds).
+                if (creep.memory.link_id) delete creep.memory.repairing;
                 taskStructure.upgradeController(creep);
                 return;
             }

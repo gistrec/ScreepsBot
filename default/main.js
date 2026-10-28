@@ -121,7 +121,13 @@ function upgradeCreeps(room) {
 }
 
 function updateRoom(room) {
-    if (room.isDefending || Game.time % 5 == 0) try {
+    // Первые тики после safe mode проверяем каждый тик: без врагов defending под safe mode не держится,
+    // и враг, вошедший под самый конец (в т.ч. на последнем тике, уже после нашей проверки), иначе
+    // остался бы незамеченным до 4 тиков после окончания.
+    const controller = room.controller;
+    if (controller && controller.my && controller.safeMode) room.memory.safe_mode_seen_at = Game.time;
+    const safeModeJustEnded = !(controller && controller.safeMode) && Game.time - room.memory.safe_mode_seen_at <= 5;
+    if (room.isDefending || safeModeJustEnded || Game.time % 5 == 0) try {
         taskDefend.checkStatus(room);
     } catch(err) { err.log() };
 

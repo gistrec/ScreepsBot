@@ -1,5 +1,48 @@
 const utils = require('../utils');
 
+// Максимальный drop hits одной структуры с прошлой проверки. Снимок hits per-id живёт в
+// room.memory[memKey]; починка (drop < 0) игнорируется. Структура, исчезнувшая из списка
+// (разрушена между проверками), считается упавшей на все свои прошлые hits - иначе башню,
+// снесённую за один тик, триггер бы не заметил. Для рампартов нужен порог выше decay'я
+// (см. checkStatus; рампарт, истлевший до нуля, в снимке имел <= 300), у спавнов/башен/
+// терминала/storage/factory decay'я нет - любой drop там = урон.
+function maxHitsDrop(room, memKey, structures) {
+    const lastHits = room.memory[memKey] || {};
+    const nextHits = {};
+    let maxDrop = 0;
+    for (const s of structures) {
+        const prev = lastHits[s.id];
+        if (prev !== undefined && prev - s.hits > maxDrop) maxDrop = prev - s.hits;
+        nextHits[s.id] = s.hits;
+    }
+    for (const id in lastHits) {
+        if (!(id in nextHits) && lastHits[id] > maxDrop) maxDrop = lastHits[id];
+    }
+    room.memory[memKey] = nextHits;
+    return maxDrop;
+}
+
+// Тик последнего вызова activateSafeMode. В движке интент один на игрока за тик: второй вызов
+// из другой комнаты удаляет первый, но оба возвращают OK (engine structures.js,
+// lastActivateSafeMode) - без лока две комнаты отправили бы два письма "enabled", а safe mode
+// получила бы только последняя. Module-level: живёт между тиками до global reset.
+let safeModeActivatedAt = -1;
+
+// Можно ли прямо сейчас включить safe mode. Повторяет проверки движка (activateSafeMode ->
+// ERR_NOT_ENOUGH_RESOURCES / ERR_TIRED / ERR_BUSY) плюс per-room override disable_safe_mode.
+// Без этого под defending (checkStatus каждый тик) триггер срабатывал каждый тик весь
+// safe mode и весь cooldown - с console.log + Game.notify (= письмо) на каждом тике.
+function canActivateSafeMode(room) {
+    const controller = room.controller;
+    if (room.memory.disable_safe_mode) return false;
+    if (safeModeActivatedAt == Game.time) return false;
+    if (controller.safeMode || controller.safeModeCooldown || !controller.safeModeAvailable) return false;
+    if (controller.upgradeBlocked) return false;
+    if (controller.ticksToDowngrade < CONTROLLER_DOWNGRADE[controller.level] / 2 - CONTROLLER_DOWNGRADE_SAFEMODE_THRESHOLD) return false;
+    // Safe mode может быть активен только в одной комнате на шард.
+    return !_.some(Game.rooms, r => r.controller && r.controller.my && r.controller.safeMode);
+}
+
 exports.checkStatus = function(room) {
     const controller = room.controller;
 
@@ -29,28 +72,19 @@ exports.checkStatus = function(room) {
     //
     // Раньше использовали суммарный delta всех ramparts > 5000 - это false-fired на
     // синхронных decay'ах: 72 рампарта × 300 = 21.6k drop без какой-либо атаки.
-    if (!room.memory.rampart_hits_by_id) room.memory.rampart_hits_by_id = {};
-    const lastHits = room.memory.rampart_hits_by_id;
-    let maxRampartDrop = 0;
-    const nextHits = {};
-    for (const r of allRamparts) {
-        const prev = lastHits[r.id];
-        if (prev !== undefined) {
-            const drop = prev - r.hits;
-            if (drop > maxRampartDrop) maxRampartDrop = drop;
-        }
-        nextHits[r.id] = r.hits;
-    }
-    room.memory.rampart_hits_by_id = nextHits;
+    const maxRampartDrop = maxHitsDrop(room, 'rampart_hits_by_id', allRamparts);
     const rampartUnderAttack = maxRampartDrop > 1000 && enemyCreeps.length > 0;
     // Migration: чистим старое суммарное поле от прежней версии эвристики.
     if (room.memory.last_rampart_hits !== undefined) delete room.memory.last_rampart_hits;
 
-    // Есть ли поврежденные спавны/башни/терминал/storage/factory.
+    // Бьют ли прямо сейчас спавны/башни/терминал/storage/factory. Их никто не чинит (башни и
+    // апгрейдеры берут только рампарты/стены/дороги/контейнеры), decay'я нет - поэтому старое
+    // "hits != hitsMax" держалось вечно после одной царапины, и любой следующий враг с
+    // ATTACK/WORK жёг safe mode. Смотрим drop с прошлой проверки: hits у них падают только от урона.
     const criticalTypes = [STRUCTURE_SPAWN, STRUCTURE_TOWER, STRUCTURE_TERMINAL, STRUCTURE_STORAGE, STRUCTURE_FACTORY];
-    const spawnDamaged = criticalTypes
-        .flatMap(t => myByType[t] || [])
-        .filter(s => s.hits != s.hitsMax);
+    const criticalStructs = criticalTypes.flatMap(t => myByType[t] || []);
+    const maxCriticalDrop = maxHitsDrop(room, 'critical_hits_by_id', criticalStructs);
+    const criticalUnderAttack = maxCriticalDrop > 0 && enemyCreeps.length > 0;
     // rampart_super_damaged как fail-safe срабатывал на статичных низких рампартах: один
     // случайный враг + давно недоремонтированные барьеры = впустую сожжённый safe mode.
     // Требуем чтобы (а) урон шёл прямо сейчас strictly выше decay'я (один из 72+ рампартов
@@ -60,25 +94,27 @@ exports.checkStatus = function(room) {
 
     // Включаем SafeMode, если барьер или спаун повреждены.
     // Проверка на наличие врагов добавлена чтобы барьер нечайно сам не регрессировал + при апгрейде контроллера.
-    if ((rampartSuperDamagedTrigger || spawnDamaged.length || rampartUnderAttack) && enemyCreeps.length && controller.safeModeAvailable && !controller.upgradeBlocked) {
+    // canActivateSafeMode - последним: там обход Game.rooms, нужен только когда триггер уже сработал.
+    if ((rampartSuperDamagedTrigger || criticalUnderAttack || rampartUnderAttack) && enemyCreeps.length && canActivateSafeMode(room)) {
+        const result = controller.activateSafeMode();
+        if (result == OK) safeModeActivatedAt = Game.time;
+
         const reasons = [];
         if (rampartSuperDamagedTrigger) reasons.push(`rampart_super_damaged (${rampartSuperDamaged.length} <5% HP, drop=${maxRampartDrop}, enemies=${enemyCreeps.length})`);
-        if (spawnDamaged.length)        reasons.push(`critical_struct_damaged (${spawnDamaged.map(s => s.structureType).join(',')})`);
+        if (criticalUnderAttack)        reasons.push(`critical_struct_under_attack (drop=${maxCriticalDrop}: ${criticalStructs.filter(s => s.hits < s.hitsMax).map(s => s.structureType).join(',')})`);
         if (rampartUnderAttack)         reasons.push(`rampart_under_attack (drop=${maxRampartDrop})`);
 
         const lowestRampart = _.min(allRamparts, r => r.hits);
         const lowestHits = (lowestRampart && lowestRampart.hits !== Infinity) ? lowestRampart.hits : 'n/a';
 
-        const text = `Safe mode was enabled for room ${room.name}\n` +
+        const text = `Safe mode ${result == OK ? 'was enabled' : `activation failed (${result.toStringStatus()})`} for room ${room.name}\n` +
                      `Trigger: ${reasons.join(', ')}\n` +
                      `Lowest rampart: ${lowestHits} HP, max drop this tick: ${maxRampartDrop}\n` +
                      `${enemyCreeps.length} enemy creeps`;
         console.log(text);
-        Game.notify(text);
-
-        if (!room.memory.disable_safe_mode) {
-            room.controller.activateSafeMode();
-        }
+        // Письмо - только на успех. Со следующего тика controller.safeMode выставлен, и
+        // canActivateSafeMode не пустит сюда повторно - одно письмо на активацию.
+        if (result == OK) Game.notify(text);
     }
 
     // Активная угроза - что-то прямо сейчас. Повреждённые барьеры/спавны сюда НЕ входят:
@@ -96,7 +132,12 @@ exports.checkStatus = function(room) {
     const inHoldDown = room.memory.last_attack_at !== undefined
                     && (Game.time - room.memory.last_attack_at) <= DEFEND_HOLD_TICKS;
 
-    const shouldDefend = threatActive || inHoldDown || controller.safeMode;
+    // Сам по себе safeMode defending не держит: пока враги стоят в комнате, threatActive и так
+    // true (стройка стоит, checkStatus каждый тик - и в момент окончания safe mode лага нет);
+    // ушли/убиты - через hold-down комната возвращается к стройке/ремонту/апгрейду. Раньше
+    // controller.safeMode держал defending все 20000 тиков, и разрушенное нельзя было отстроить
+    // именно в то окно, ради которого safe mode включали.
+    const shouldDefend = threatActive || inHoldDown;
 
     if (shouldDefend) {
         if (room.memory.defending) {
@@ -125,9 +166,10 @@ exports.fireTower = function(room) {
     const woundedCreeps = room.find(FIND_MY_CREEPS, {
         filter: (c) => c.hits != c.hitsMax && !c.memory.recycling
     });
-    const hostileCreeps = !room.controller.safeMode
-        ? room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS))
-        : [];
+    // Под safe mode тоже стреляем: движок блокирует только интенты чужих крипов, наши башни
+    // работают как обычно, а враг не может лечиться - лучшего момента добить его нет.
+    // Раньше список обнулялся под safeMode ("временная мера" из первой версии).
+    const hostileCreeps = room.cache('hostileCreeps', r => r.find(FIND_HOSTILE_CREEPS));
 
     const structuresByType = utils.getStructuresByType(room);
     const ramparts = structuresByType[STRUCTURE_RAMPART] || [];
@@ -139,16 +181,23 @@ exports.fireTower = function(room) {
             .filter(s => s.hitsMax - s.hits > 800)
         : [];
 
+    // При врагах в комнате лечит не больше одной башни, остальные стреляют. Раньше любой
+    // поцарапанный свой крип (даже в 20 клетках от боя) переключал ВСЕ башни на heal, и ни
+    // одна не атаковала. Без врагов - как и было: каждая башня лечит ближайшего раненого.
+    let healUsed = false;
+
     for (const tower of towers) {
         // Heal только в радиусе 20 - дальше эффективность падает до 25%, не стоит расхода энергии.
         const inRangeWounded = woundedCreeps.filter(c => tower.pos.inRangeTo(c, 20));
         const wounded = tower.pos.findClosestByRange(inRangeWounded);
-        if (wounded) {
-            tower.heal(wounded);
+        // healUsed - только при OK: пустая/неактивная башня (ERR_NOT_ENOUGH_ENERGY / ERR_RCL_NOT_ENOUGH)
+        // не должна запрещать лечение остальным.
+        if (wounded && !(hostileCreeps.length > 0 && healUsed) && tower.heal(wounded) == OK) {
+            healUsed = true;
             continue;
         }
 
-        if (!room.controller.safeMode && hostileCreeps.length > 0) {
+        if (hostileCreeps.length > 0) {
             const reachable = hostileCreeps.filter(s => s.owner.username == "Invader" || s.pos.inRangeTo(tower, 13));
             const enemy = tower.pos.findClosestByRange(reachable);
             if (enemy) {

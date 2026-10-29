@@ -51,10 +51,13 @@ const roleCarrier = {
             return;
         }
 
-        // Дропа нет - может быть в ruin'е (если банк только что killed - ресурсы лежат в ruin).
-        const ruin = creep.pos.findClosestByRange(FIND_RUINS, {
-            filter: r => r.store.getUsedCapacity(RESOURCE_POWER) > 0
-        });
+        // Дропа нет - может быть в ruin'е (банк только что killed - ресурсы лежат в ruin) или в
+        // tombstone погибшего carrier'а (движок переносит store в tombstone, creeps/_die.js; на
+        // землю он высыпется только через 5 тиков на часть тела).
+        const ruin = creep.pos.findClosestByRange(
+            [].concat(creep.room.find(FIND_RUINS), creep.room.find(FIND_TOMBSTONES)),
+            {filter: r => r.store.getUsedCapacity(RESOURCE_POWER) > 0}
+        );
         if (ruin) {
             if (creep.pos.isNearTo(ruin)) {
                 creep.withdraw(ruin, RESOURCE_POWER);

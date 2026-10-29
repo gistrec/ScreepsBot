@@ -9,6 +9,12 @@
 //   1. Каждые 10 секунд сканируем "границы большого квадрата"
 //   2. Ищем PowerBank
 
+const modulePowerBank = require('./powerBank');
+
+// Сколько тиков после decayAt банка (или последнего увиденного лута) запись в 'looting'
+// переживает cleanup (см. ниже).
+const LOOT_GRACE = 3000;
+
 const rooms = [                         "W10S33",
                                         "W10S34",
                                         "W10S35",
@@ -111,15 +117,28 @@ exports.process = function() {
             for (const id in Memory.power_banks) {
                 const entry = Memory.power_banks[id];
                 if (entry.roomName != room_name) continue;
-                if (entry.status == 'looting') continue;
-                // 'attacking'/'stealing' с заданным home_room: банк скорее всего убит -
-                // переводим в 'looting' чтобы carrier'ы вышли (powerBank.process спавнит
-                // их идемпотентно). Если дропа в комнате не окажется - carrier'ы сами
-                // recycle'ятся. Раньше 'attacking'-запись просто удалялась если observer
-                // успевал раньше process() детектить смерть - и наш дроп тоже терялся.
+                if (entry.status == 'looting') {
+                    // Power кончилась (ни drop/ruin/tombstone в комнате, ни груза у carrier'ов) -
+                    // done. Без своих крипов в комнате powerBank.process этого не видит, и запись
+                    // висела бы до cleanup'а ниже, держа слот power_bank_max_active, а первая волна
+                    // carrier'ов после гибели уезжала бы впустую.
+                    if (modulePowerBank.hasLootInRoom(room)) {
+                        entry.lootSeenAt = Game.time;
+                    } else if (!modulePowerBank.carriersCarrying(entry)) {
+                        console.log(`[${room_name}] Bank ${id} fully looted.`);
+                        entry.status = 'done';
+                    }
+                    continue;
+                }
+                // 'attacking'/'stealing' с заданным home_room: банк убит или decay'нулся. Есть
+                // power (ruin/drop) - 'looting', carrier'ов спавнит powerBank.process; нет - 'done'
+                // без carrier'ов (раньше при decay уезжали 3 пустых рейса). Раньше 'attacking'-
+                // запись просто удалялась, если observer успевал раньше process() - и дроп терялся.
                 if (entry.home_room && (entry.status == 'attacking' || entry.status == 'stealing')) {
-                    console.log(`[${room_name}] Bank ${id} disappeared during ${entry.status} - switching to loot.`);
-                    entry.status = 'looting';
+                    const next = modulePowerBank.hasLootInRoom(room) ? 'looting' : 'done';
+                    console.log(`[${room_name}] Bank ${id} disappeared during ${entry.status} -> ${next}.`);
+                    entry.status = next;
+                    if (next == 'looting') entry.lootSeenAt = Game.time;
                     continue;
                 }
                 delete Memory.power_banks[id];
@@ -128,10 +147,19 @@ exports.process = function() {
     }
 
     // Cleanup: protacted-status или истёкшие записи. Реже - find выше уже подчищает в норме.
+    // 'looting' живёт дольше decayAt банка: лут убитого банка лежит на земле до ~2300 тиков
+    // (5000 power по ceil(amount/1000) за тик) плюс tombstone'ы carrier'ов (5 тиков на часть);
+    // выход из looting - скан выше (нет лута и никто не везёт -> done), здесь только страховка.
+    // Раньше запись удалялась по decayAt с лутом на земле - carrier'ы (`!bank`) бросали сбор.
+    // Отсчёт от последнего увиденного лута (lootSeenAt): цепочка погибших carrier'ов держит power
+    // в tombstone'ах и отодвигает decay, абсолютный дедлайн удалил бы запись с лутом.
     if (Game.time % 100 === 0) {
         for (const id in Memory.power_banks) {
             const entry = Memory.power_banks[id];
-            if (entry.status === 'done' || entry.decayAt < Game.time) {
+            const deadline = entry.status === 'looting'
+                ? Math.max(entry.decayAt, entry.lootSeenAt || 0) + LOOT_GRACE
+                : entry.decayAt;
+            if (entry.status === 'done' || deadline < Game.time) {
                 delete Memory.power_banks[id];
             }
         }

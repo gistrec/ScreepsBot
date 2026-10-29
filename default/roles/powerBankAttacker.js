@@ -55,7 +55,11 @@ const roleAttacker = {
         }
         const targetRoom = creep.memory.target_room;
 
-        // Self-heal каждый тик (бесплатно если есть HEAL parts).
+        // Self-heal каждый тик (бесплатно если есть HEAL parts). На тике с attack интент heal
+        // снимается (см. attackAndDropHeal): в движке heal и attack взаимоисключающие
+        // (processor/intents/creeps/intents.js: priorities.attack включает 'heal'), при обоих
+        // интентах attack молча отбрасывается - атакер после первой же отдачи банка 3 тика из 4
+        // только лечился.
         if (creep.hits < creep.hitsMax) {
             creep.heal(creep);
         }
@@ -67,7 +71,7 @@ const roleAttacker = {
             const hostile = creep.pos.findClosestByRange(FIND_HOSTILE_CREEPS);
             if (hostile) {
                 if (creep.pos.isNearTo(hostile)) {
-                    creep.attack(hostile);
+                    attackAndDropHeal(creep, hostile);
                 } else {
                     creep.moveTo(hostile, {reusePath: 3, visualizePathStyle: {stroke: '#ff0000'}});
                 }
@@ -108,12 +112,33 @@ const roleAttacker = {
             return;
         }
 
-        if (creep.pos.isNearTo(target)) {
-            creep.attack(target);
-        } else {
+        if (!creep.pos.isNearTo(target)) {
             creep.moveTo(target, {reusePath: 5});
+            return;
         }
+
+        // Без хилера рядом не бьём. Отдача банка - POWER_BANK_HIT_BACK = 50% нанесённого урона
+        // (20 ATTACK x4 = 2400 урона -> 1200 в ответ за тик), свой хил слабее (10 HEAL x4 = 480)
+        // и с attack в одном тике не совместим. Банк сам не атакует - стоим рядом и ждём пару;
+        // хилера, который ещё не заспавнен или погиб, доспавнит modules/powerBank. Крипы без
+        // pair (ручные no_retreat) бьют сразу, как раньше. solo (хилера не будет - мало TTL,
+        // ставит modules/powerBank) - бьём только на полных hits, между ударами self-heal.
+        const healer = creep.memory.pair ? Game.creeps[creep.memory.pair] : null;
+        if (creep.memory.pair && !(healer && healer.pos.isNearTo(creep))) {
+            if (!creep.memory.solo) {
+                creep.say('⏳Healer');
+                return;
+            }
+            if (creep.hits < creep.hitsMax) return;
+        }
+        attackAndDropHeal(creep, target);
     }
 };
+
+// attack с отменой self-heal этого тика (cancelOrder -> intents.remove в driver'е): иначе движок
+// отбросил бы attack. Если attack не прошёл (напр. ATTACK-части выбиты) - heal остаётся.
+function attackAndDropHeal(creep, target) {
+    if (creep.attack(target) === OK) creep.cancelOrder('heal');
+}
 
 module.exports = roleAttacker;

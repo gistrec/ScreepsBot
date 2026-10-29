@@ -181,7 +181,14 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
     const result = Game.market.deal(order.id, buyAmount, room.name);
     if (result == OK) {
         console.log(`[${room.name}][Boost-Buy] Bought ${buyAmount} ${resourceType} @ ${order.price} cr/u from ${order.roomName} (cost ${totalCost} cr, energy ${energyCost}).`);
-        return have + buyAmount >= need;
+        // Второй deal с этого терминала в том же тике процессор молча пропустит (global-intents/
+        // market.js: первый ставит cooldownTime прямо в объект) - помечаем терминал занятым, как
+        // это делают обёртки prototypes/structure.js для send. Сам минерал появится в store только
+        // со следующего тика: отвечаем "ещё нет", caller (ensureBoostMinerals) увидит его в
+        // следующем проходе. Раньше OK второго deal засчитывался как купленный, сквад спавнился,
+        // и boost_force-атакер ждал минерал у лабы до смерти.
+        room.terminal._intentAt = Game.time;
+        return false;
     }
     console.log(`[${room.name}][Boost-Buy] market.deal failed for ${resourceType}: ${result} ${result.toStringStatus()}`);
     return false;

@@ -20,6 +20,10 @@ const configurations = [
 ];
 
 
+// Аварийный чарджер (0 чарджеров, energyAvailable < 300, см. spawn): пары [CARRY, MOVE].
+const EMERGENCY_PAIR_COST = BODYPART_COST[CARRY] + BODYPART_COST[MOVE];
+
+
 // Ищем струкутру около спавна.
 // Возврааем её id.
 function findStructureNearSpawn(spawn, structureType) {
@@ -84,6 +88,19 @@ function parkNearLink(creep) {
 
 const roleCharger = {
     spawn: function(room, force = false) {
+        const charger = utils.creepsByRole(room, "charger");
+        // Аварийный чарджер (см. ниже) своё отработал, как только вышел обычный: на переработку
+        // (taskCreep.checkRecycling в main.js), его слот в max_count займёт полноразмерный.
+        // До ранних выходов: занятый спавн или пропавший needsChargers не должны его оставлять.
+        // Обычный умер раньше, чем аварийный дошёл до спавна - снимаем переработку: иначе идущий
+        // на переработку считается чарджером и держит спавн замены (charger.length ниже).
+        const hasRegular = charger.some(c => !c.memory.emergency);
+        for (const c of charger) {
+            if (!c.memory.emergency) continue;
+            if (hasRegular) c.memory.recycling = true;
+            else delete c.memory.recycling;
+        }
+
         const spawn = utils.findFreeSpawn(room);
         if (!spawn) return true;
 
@@ -95,14 +112,25 @@ const roleCharger = {
         // и чарджеры начинают спавниться нормально.
         if (!force && !utils.needsChargers(room)) return true;
 
-        const charger = utils.creepsByRole(room, "charger");
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (!force && charger.length >= creepConfiguration.max_count) return true;
 
+        let parts = creepConfiguration.parts;
+        let emergency = false;
         if (creepConfiguration.energy > room.energyAvailable) {
-            console.log(`[${room.name}] Need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
-            utils.recordSpawnNeed(room, 'charger', creepConfiguration.energy);
-            return false;
+            // Чарджеров нет совсем (вайп), а на самое дешёвое тело не хватает: энергию в spawn/extension
+            // кроме чарджера не носит никто, спавн регенерирует +1/тик до 300 - до 300 тиков без
+            // чарджера. Выпускаем аварийного [CARRY, MOVE] x N на то, что есть (от 100e): довезёт
+            // из контейнера/storage, а на полноразмерного его сменят (переработка выше).
+            const pairs = Math.floor(room.energyAvailable / EMERGENCY_PAIR_COST);
+            if (charger.length > 0 || pairs < 1) {
+                console.log(`[${room.name}] Need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+                utils.recordSpawnNeed(room, 'charger', creepConfiguration.energy);
+                return false;
+            }
+            parts = [];
+            for (let i = 0; i < pairs; i++) parts.push(CARRY, MOVE);
+            emergency = true;
         }
 
         // Anchor для поиска infrastructure-структур: терминал в RCL 6+ layout стоит в центре
@@ -116,7 +144,9 @@ const roleCharger = {
         const role = 'charger';
         const name = utils.creepName('Charger', room);
         const energyStructures = utils.getEnergyStructures(room, spawn);
-        const result = spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, link_id, storage_id, factory_id, terminal_id}, energyStructures});
+        const memory = {role, link_id, storage_id, factory_id, terminal_id};
+        if (emergency) memory.emergency = true;
+        const result = spawn.spawnCreep(parts, name, {memory, energyStructures});
         if (result !== OK) {
             console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
             // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.

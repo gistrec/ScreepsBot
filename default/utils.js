@@ -32,9 +32,24 @@ exports.getEffectiveEnergyCapacity = function(room) {
     });
 };
 
+// Энергия в складах, из которых чарджер наполняет spawn/extension: storage, terminal, factory
+// (charger.run берёт из них остаток, minCount 1). Контейнеры не считаем: из них чарджер берёт
+// только полной порцией трюма, раздробленный по контейнерам запас может оказаться недоступен.
+// Используется miner.spawn для восстановления после вайпа (0 майнеров / 0 чарджеров).
+exports.getStoredSpawnEnergy = function(room) {
+    return room.cache('storedSpawnEnergy', r => {
+        let stored = 0;
+        for (const s of [r.storage, r.terminal, r.getFactory()]) {
+            if (s) stored += s.store.getUsedCapacity(RESOURCE_ENERGY);
+        }
+        return stored;
+    });
+};
+
 // TODO: Check miner and charger exists - we can't spawn creep without energy in estansion!
-exports.getAvailableCreepConfiguration = function(configurations, room) {
-    const energyCapacityAvailable = getEnergyCapacityAvailable(room);
+// energyCapacity - явная ёмкость вместо getEnergyCapacityAvailable (восстановление в miner.spawn).
+exports.getAvailableCreepConfiguration = function(configurations, room, energyCapacity = null) {
+    const energyCapacityAvailable = energyCapacity !== null ? energyCapacity : getEnergyCapacityAvailable(room);
 
     for (let i = 0; i < configurations.length; i++) {
         const currentConfiguration = configurations[i];

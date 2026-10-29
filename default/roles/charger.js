@@ -27,6 +27,38 @@ function findStructureNearSpawn(spawn, structureType) {
     return structure ? structure.id : null;
 }
 
+// Резерв энергии в терминале под пересылки и маркет (см. fill-цепочку в run).
+// Override: room.memory.terminal_energy_reserve.
+function terminalEnergyReserve(room) {
+    return room.memory.terminal_energy_reserve !== undefined ? room.memory.terminal_energy_reserve : 100000;
+}
+
+// Пороги modules/resourceBalance.js (там не экспортируются) - держать в синхроне:
+// POOR_RECEIVE_FREE - столько свободного места нужно терминалу получателя под входящий send
+// (это же покрывает 10k под lab-пересылку и 3k под батарейки на экспорт);
+// POOR_STORED_ENERGY - ниже комната бедная, энергию ей шлют, а не она копит её в терминале.
+const RB_POOR_RECEIVE_FREE  = 60000;
+const RB_POOR_STORED_ENERGY = 50000;
+
+// Терминал ниже резерва, и его есть чем долить из storage. Кроме чарджера энергию
+// storage -> terminal никто не возит (resourceBalance шлёт из терминала, но не пополняет его),
+// а fill-цепочка кладёт в терминал только то, что уже в трюме: при паузе майнинга (линк пуст)
+// и полных потребителях терминал после send/маркета так и остался бы ниже резерва.
+// Без пинг-понга: storage > 20k (как compressEnergy в resourceBalance) - withdraw в run идёт
+// из storage первым, а обратного пути terminal -> storage для энергии нет; место в терминале
+// под полный трюм - иначе остаток каждый рейс возвращался бы в storage.
+// Доливка не съедает место под входящие пересылки: после рейса в терминале остаётся
+// >= RB_POOR_RECEIVE_FREE свободного. Бедную комнату не доливаем вовсе - она получатель.
+function terminalNeedsStorageEnergy(creep) {
+    const terminal = creep.room.terminal;
+    const storage  = creep.room.storage;
+    if (!terminal || !storage) return false;
+    return terminal.store.getUsedCapacity(RESOURCE_ENERGY) < terminalEnergyReserve(creep.room)
+        && terminal.store.getFreeCapacity() - creep.store.getCapacity() >= RB_POOR_RECEIVE_FREE
+        && storage.store.getUsedCapacity(RESOURCE_ENERGY) > 20000
+        && creep.room.getTotalEnergy() >= RB_POOR_STORED_ENERGY;
+}
+
 // Парковка чарджера в фиксированной точке (storage.x+1, storage.y) - в layout-е
 // эта клетка соседняя и со storage, и с линком, и обычно с терминалом, поэтому
 // withdraw из линка + transfer в storage идут без беготни. Работает только для
@@ -123,13 +155,39 @@ const roleCharger = {
             // 200-фильтр ничего не нашёл, 350 тем более ничего не найдёт.
             const towerThreshold = creep.room.isUnderAttack ? 200 : 350;
             if (taskResource.fillClosestStructure(creep, STRUCTURE_TOWER, towerThreshold) == OK) return;
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_LAB)                   == OK) return;
+            // Лабам из цепочки - только энергия (под бусты); минералы в лабы возят transfer-задачи.
+            // С RESOURCES_ALL случайный минерал из трюма уезжал бы в пустую реакционную лабу.
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_LAB, 0, RESOURCE_ENERGY) == OK) return;
 
-            // TODO: Сделать так, чтобы в терминале всегда было 30к энергии для резерва
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL)  == OK) return;
-            if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)   == OK) return;
+            // Потребители - раньше складов. terminal/storage принимают любой объём, и всё, что
+            // стояло в цепочке после них, не получало энергии никогда: power_spawn стоял с
+            // power, но без энергии. Оба шага гейтятся сами: power_spawn - только при power (в нём
+            // или в пути) и не под атакой (powerSpawnNeedingEnergy), nuker - по спокойствию и
+            // запасу (fillNukerIfCalm).
             if (taskResource.fillPowerSpawnEnergy(creep) == OK) return;
             if (taskResource.fillNukerIfCalm(creep) == OK) return;
+
+            // Склады. В терминале держим резерв под пересылки и маркет (resourceBalance делится
+            // при > 50k и по 30k за раз, lab/boost платят комиссию из терминала), остальное - в
+            // storage. Раньше терминал (300k) шёл первым и заполнялся энергией под завязку: не
+            // оставалось места под минералы из лаб, покупки и входящие пересылки. Если storage
+            // нет или он полон - терминал принимает всё последним шагом. Доливку резерва
+            // из storage даёт realDemand (terminalNeedsStorageEnergy).
+            const terminal = creep.room.terminal;
+            const terminalReserve = terminalEnergyReserve(creep.room);
+            if (terminal && terminal.store.getUsedCapacity(RESOURCE_ENERGY) < terminalReserve) {
+                if (taskResource.fillTarget(creep, terminal) == OK) return;
+            }
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)   == OK) return;
+            if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL)  == OK) return;
+
+            // Ни одна цель не приняла груз: потребители полны, terminal/storage физически полны
+            // (типично - минерал/батарейки после снятой transfer-задачи). На пол не выбрасываем:
+            // никто не подберёт (политика dumpCargo в tasks/boost.js). Ждём места, логируем редко.
+            if (Game.time % 100 == 0) {
+                console.log(`[${creep.room.name}] Charger ${creep.name} has nowhere to unload ${JSON.stringify(creep.store)}.`);
+            }
+            creep.say('🚧Stall');
         } else {
             // Основная задача: получить энергию для заполнения spawn/extension/etc.
             const link = Game.getObjectById(creep.memory.link_id)
@@ -138,6 +196,12 @@ const roleCharger = {
 	            return;
 	        }
 
+            // Из складов (storage/terminal/factory) берём и остаток (minCount 1): после атаки в
+            // storage могло остаться 500 при 600 свободных в трюме - фильтр "store >= free"
+            // такой склад пропускал, и чарджер стоял при пустом спавне. Контейнер и дроп в
+            // мирном режиме - по-прежнему полной порцией: иначе чарджер "висит" на контейнере
+            // майнера, собирая по 10/тик, вместо рейса за полным грузом в storage.
+            const ANY = 1;
             if (!creep.room.isUnderAttack) {
                 // Мирный режим: сначала pickup и контейнер у майнера (это его выход).
                 if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], /* full cargo */ true)  == OK) return;
@@ -146,21 +210,43 @@ const roleCharger = {
                 // Fallback на резервы только если есть РЕАЛЬНЫЙ потребитель: ext/spawn/tower
                 // нуждается в энергии. Иначе charger будет вечно гонять storage<->terminal в
                 // насыщенной мирной комнате (terminal/storage сами в fill-цепочке).
+                // Power_spawn - тоже потребитель (при power в нём или в пути, см. powerSpawnNeedingEnergy):
+                // при паузе майнинга (насыщенная комната) линк пуст, нести нечего, и он стоял с
+                // power, но без энергии. Из складов под него берём только при запасе
+                // >= power_spawn_min_stored_energy (default 50k = POOR_STORED_ENERGY в resourceBalance,
+                // та же метрика getTotalEnergy: энергия + батарейки×10): в бедной энергия нужнее спавну.
+                // Терминал ниже резерва - тоже спрос (storage -> terminal, см. terminalNeedsStorageEnergy).
                 const byType = utils.getMyStructuresByType(creep.room);
+                const psMinStored = creep.room.memory.power_spawn_min_stored_energy || 50000;
                 const realDemand =
                        (byType[STRUCTURE_SPAWN]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
                     || (byType[STRUCTURE_EXTENSION] || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
-                    || (byType[STRUCTURE_TOWER]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 350);
+                    || (byType[STRUCTURE_TOWER]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 350)
+                    || (!!taskResource.powerSpawnNeedingEnergy(creep.room) && creep.room.getTotalEnergy() >= psMinStored)
+                    || terminalNeedsStorageEnergy(creep);
                 if (realDemand) {
-                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;
-                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
-                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY])  == OK) return;
+                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE],  RESOURCE_ENERGY, 0, ANY) == OK) return;
+                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_ENERGY, 0, ANY) == OK) return;
+                    if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY],  RESOURCE_ENERGY, 0, ANY) == OK) return;
                 }
             } else {
                 // Под атакой: контейнеры/дроп вне rampart небезопасны. Берём только из защищённых складов.
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE])  == OK) return;
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY])  == OK) return;
-                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL]) == OK) return;
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE],  RESOURCE_ENERGY, 0, ANY) == OK) return;
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_FACTORY],  RESOURCE_ENERGY, 0, ANY) == OK) return;
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_ENERGY, 0, ANY) == OK) return;
+                // Защищённых складов нет (RCL 3-5: башни уже есть, storage ещё нет) или они
+                // пусты. Без энергии башни и экстеншены не заправить - это проигранная оборона,
+                // риск потерять чарджера у контейнера меньше. Дроп берём любой: он decay'ится.
+                if (taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER]) == OK) return;
+                if (taskResource.pickupClosestResources(creep, [RESOURCE_ENERGY], false) == OK) return;
+            }
+
+            // Взять нечего. С непустым трюмом не ждём полного (chechHarvesting снимает harvesting
+            // только при полном трюме) - везём, что есть: после частичного withdraw или дозабора
+            // из линка чарджер иначе стоял бы с энергией в трюме при пустом спавне.
+            if (creep.store.getUsedCapacity() > 0) {
+                creep.memory.harvesting = false;
+                return;
             }
 
             // Дошли сюда - в комнате нет источника энергии. Сидим у линка вместо случайной

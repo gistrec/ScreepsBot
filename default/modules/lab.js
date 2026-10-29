@@ -526,7 +526,8 @@ exports.transferResourcesBetweenRooms = function() {
 
                 const transfer = {resource_type: requireMineral, source_id: sourceRoom.storage.id, target_id: sourceRoom.terminal.id, max_resource_count_in_target: 10000};
 
-                const charger = utils.creepsByRole(sourceRoom, "charger").filter(c => !c.memory.transfer).shift();
+                // Как в Room.transfer: чарджер с disassemble-задачей не свободен (charger.run выполняет её раньше transfer).
+                const charger = utils.creepsByRole(sourceRoom, "charger").filter(c => !c.memory.transfer && !c.memory.disassemble).shift();
                 if (charger) charger.memory.transfer = transfer;
             }
         }

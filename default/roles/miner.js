@@ -14,6 +14,15 @@ const taskResource = require('../tasks/resource');
 // Можно переопределить per-room через room.memory.miner_pause_total_energy.
 const DEFAULT_MINER_PAUSE_TOTAL_ENERGY = 2_000_000;
 
+// Восстановление после вайпа: сколько тиков первый майнер ждёт полное тело, пока чарджер
+// доливает spawn/extension из складов. Дальше - тело по energyAvailable, как раньше (склад
+// недостижим, чарджер не справляется) - иначе майнер держал бы всю цепочку спавна.
+const RECOVERY_WAIT_TICKS = 150;
+// Таймер ожидания самовосстанавливается: если проверка восстановления не доходила до него дольше
+// этого (цепочка спавна - раз в 10 тиков; прервали атака, пауза, пропавший чарджер и т.п.),
+// ожидание начинается заново, а не считается сразу истёкшим.
+const RECOVERY_STALE_TICKS = 20;
+
 const configurations = [
     // Bootstrap RCL 2: WORK+CARRY+2*MOVE. С CARRY сам носит энергию в спавн до появления
     // чарджера (без неё энергия дропается и decay-ится - тупик). 2 MOVE = 0 fatigue на plain.
@@ -46,7 +55,7 @@ const roleMiner = {
             return true;
         }
 
-        const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
+        let creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         const replacementTtl = utils.minerReplacementTtl(creepConfiguration.parts.length);
 
         // На начальном уровне удваиваем количество майнеров: 250e config даёт 1 WORK =
@@ -60,16 +69,56 @@ const roleMiner = {
             : roomSources.length;
         const miners = utils.creepsByRole(room, "miner").filter(c => c.ticksToLive > replacementTtl);
         if (miners.length >= sourcesCount) {
+            delete room.memory.miner_recovery;
             return true;
         }
 
         // Charger-parity gate: не плодим миннеров, для которых нет чарджера, иначе энергия
         // копится в контейнере / на земле. На bootstrap'е charger.spawn капится до 1, что
         // через этот gate автоматически даёт ровно 1 миннера до построения контейнера.
-        const charger = utils.creepsByRole(room, "charger");
+        // Чарджер на переработке (аварийный, см. charger.spawn) энергию уже не носит - не считаем
+        // его ни здесь, ни в восстановлении ниже.
+        const allChargers = utils.creepsByRole(room, "charger");
+        const charger = allChargers.filter(c => !c.memory.recycling);
         if (miners.length > charger.length) {
             return true;
         }
+
+        // Восстановление после вайпа. Энергию в spawn/extension носит только чарджер: майнер со
+        // storage к спавну не ходит, а спавн регенерирует +1/тик до 300. Раньше майнер забирал
+        // energyAvailable целиком, и первый чарджер ждал регенерацию до 300 тиков, пока storage
+        // стоял полный.
+        const stored = utils.getStoredSpawnEnergy(room);
+        const capacity = utils.getEffectiveEnergyCapacity(room);
+        let recovering = false;
+        if (charger.length == 0) {
+            // 1. Чарджеров нет, в складах запас на полную заливку - чарджер первым (порядок цепочки
+            //    не меняем, майнер передаёт ход, как на parity-гейте выше). Остались только чарджеры
+            //    на переработке - тоже передаём ход: charger.spawn снимет её с аварийного, а sizing
+            //    ниже (getEnergyCapacityAvailable) считал бы их и ждал полное тело.
+            if (allChargers.length > 0 || (utils.needsChargers(room) && stored >= capacity)) {
+                return true;
+            }
+        } else if (utils.creepsByRole(room, "miner").length == 0) {
+            // 2. Чарджер есть, майнеров нет: getAvailableCreepConfiguration берёт тело по текущему
+            //    energyAvailable, и майнер вышел бы 250e (1 WORK на 1500 тиков), пока чарджер ещё
+            //    доливает. Если энергии в складах + spawn/extension + трюмах чарджеров хватает на
+            //    полную заливку - ждём полное тело, но не дольше RECOVERY_WAIT_TICKS.
+            const cargo = charger.reduce((sum, c) => sum + c.store.getUsedCapacity(RESOURCE_ENERGY), 0);
+            if (stored + room.energyAvailable + cargo >= capacity) {
+                recovering = true;
+                const recovery = room.memory.miner_recovery;
+                if (!recovery || Game.time - recovery.seen > RECOVERY_STALE_TICKS) {
+                    room.memory.miner_recovery = {since: Game.time, seen: Game.time};
+                } else {
+                    recovery.seen = Game.time;
+                }
+                if (Game.time - room.memory.miner_recovery.since < RECOVERY_WAIT_TICKS) {
+                    creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room, capacity);
+                }
+            }
+        }
+        if (!recovering) delete room.memory.miner_recovery;
 
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Room need Miner, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
@@ -96,6 +145,7 @@ const roleMiner = {
             return !utils.isTransientSpawnError(result);
         }
         console.log(`[${room.name}] Spawning new ${role} ${name} for source ${source_id}`);
+        delete room.memory.miner_recovery;
 
         return false;
     },

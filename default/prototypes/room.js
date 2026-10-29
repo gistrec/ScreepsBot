@@ -64,7 +64,11 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
 
     // Занятый disassemble-задачей чарджер тоже не свободен: roles/charger.js выполняет её
     // раньше transfer, и выданная ему transfer-задача ждала бы конца disassemble.
-    const chargers = require('utils').creepsByRole(this, "charger").filter(c => !c.memory.transfer && !c.memory.disassemble);
+    // Чарджер, для которого склад или цель в списке недостижимых (utils.moveToTarget), задачу
+    // тут же снимет (resource.transferResource) - не отдаём ему, иначе она возвращалась бы ему же.
+    const utils = require('utils');
+    const chargers = utils.creepsByRole(this, "charger").filter(c => !c.memory.transfer && !c.memory.disassemble
+        && !utils.isUnreachable(c, source_id) && !utils.isUnreachable(c, target_id));
     if (chargers.length === 0) {
         console.log(`[${this.name}] No creep to transfer`);
         return

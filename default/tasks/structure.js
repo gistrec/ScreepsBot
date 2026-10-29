@@ -55,11 +55,12 @@ exports.buildTarget = function(creep, target) {
             return OK;
 
         case ERR_NOT_IN_RANGE:
-            creep.moveTo(target, {
+            // Недостижимая цель (utils.moveToTarget) - "цели нет", цепочка идёт дальше.
+            if (utils.moveToTarget(creep, target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#00FF00' },
                 maxRooms: 1,
-            });
+            }) != OK) return ERR_NOT_FOUND;
             return OK;
 
         default:
@@ -83,7 +84,9 @@ exports.buildClosest = function(creep) {
 
     // findClosestByRange по умолчанию ограничен текущей комнатой (range-based, без pathfinding),
     // дополнительный фильтр по room.name был избыточен.
-    const target = creep.pos.findClosestByRange(FIND_MY_CONSTRUCTION_SITES);
+    const target = creep.pos.findClosestByRange(FIND_MY_CONSTRUCTION_SITES, {
+        filter: (s) => !utils.isUnreachable(creep, s.id)
+    });
     if (!target) return ERR_NOT_FOUND;
 
     return exports.buildTarget(creep, target);
@@ -109,11 +112,12 @@ exports.repairTarget = function(creep, target) {
             return OK;
 
         case ERR_NOT_IN_RANGE:
-            creep.moveTo(target, {
+            // Недостижимая цель (utils.moveToTarget) - "цели нет", цепочка идёт дальше.
+            if (utils.moveToTarget(creep, target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#00FF00' },
                 maxRooms: 1,
-            });
+            }) != OK) return ERR_NOT_FOUND;
             return OK;
 
         default:
@@ -137,6 +141,7 @@ exports.startRepairClosestStructs = function(creep, types, full_health = false) 
         filter: (s) => !repairing.has(s.id)
                     && s.hits < exports.repairTargetHits(s) * (full_health ? 0.99 : 0.5)
                     && s.hits > 0
+                    && !utils.isUnreachable(creep, s.id)
     });
     if (!target) return ERR_NOT_FOUND;
 
@@ -153,11 +158,14 @@ exports.continueRepairStructure = function(creep) {
         // В осаде бросаем недоремонт всего, кроме рампартов - чтобы не торчать снаружи стен.
         const dropOnDefend = creep.room.isDefending && target && target.structureType != STRUCTURE_RAMPART;
         if (target && target.hits < exports.repairTargetHits(target) && !dropOnDefend) {
-            return exports.repairTarget(creep, target);
-        } else {
-            delete creep.memory.repairing;
-            exports.repairingIds(creep.room).delete(target_id);
+            const status = exports.repairTarget(creep, target);
+            // Недостижимую цель (utils.moveToTarget) отпускаем: иначе repairingIds держит её
+            // за этим крипом, и чинить её не пойдёт никто. Её же может снова раздать
+            // rebalanceRepairing - тогда отпустим на первом тике, без moveTo.
+            if (status == OK || !utils.isUnreachable(creep, target_id)) return status;
         }
+        delete creep.memory.repairing;
+        exports.repairingIds(creep.room).delete(target_id);
     }
     return ERR_NOT_FOUND;
 }
@@ -210,6 +218,9 @@ exports.upgradeController = function(creep, controller = creep.room.controller) 
         case ERR_BUSY: // Бот еще спавнится
             return OK;
 
+        // Без utils.moveToTarget: контроллер один, другого не выбрать, а ложное срабатывание
+        // (проход занят дольше порога) оставило бы link-/controllerUpgrader'а стоять без moveTo.
+        // Range 3 - ERR_NO_PATH здесь только если ближе 3 клеток не подойти вовсе.
         case ERR_NOT_IN_RANGE:
             creep.moveTo(controller, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),

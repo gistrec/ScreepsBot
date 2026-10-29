@@ -191,6 +191,8 @@ const roleUpgrader = {
 
 
 module.exports = roleUpgrader;
+// Для console.status (нужное число апгрейдеров = max_count текущего конфига).
+module.exports.configurations = configurations;
 
 
 module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.upgrader.spawn");

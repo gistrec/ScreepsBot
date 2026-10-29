@@ -5,7 +5,7 @@ const utils = require('../utils');
 // Разовая задача "снести структуру в чужой/нейтральной комнате". Запускается через
 // Memory.wall_break = {target_id, target_room, home_room, boost?}.
 //
-// Тело: 25 WORK + 25 MOVE = 2500 ⚡. На plain'е fatigue 25×2 = 50 в тик, MOVE даёт 25×2 = 50,
+// Тело: 25 WORK + 25 MOVE = 3750 ⚡. На plain'е fatigue 25×2 = 50 в тик, MOVE даёт 25×2 = 50,
 // идёт без задержек. Без буста: 25 * DISMANTLE_POWER(50) = 1250 dmg/тик, за 1500 TTL = 1.875M.
 // С ZH ×2: 2500 dmg/тик, 1500 TTL = 3.75M - 2M стенка валится с запасом.
 //
@@ -15,7 +15,7 @@ const BODY = [].concat(
     Array(25).fill(WORK),
     Array(25).fill(MOVE),
 );
-const BODY_COST = utils.bodyCost(BODY);  // 2500
+const BODY_COST = utils.bodyCost(BODY);  // 3750
 
 
 const roleWallBreaker = {
@@ -38,6 +38,7 @@ const roleWallBreaker = {
 
         if (home.energyAvailable < BODY_COST) {
             console.log(`[${home.name}][wall_breaker] Need ${BODY_COST} energy, have ${home.energyAvailable}`);
+            utils.recordModuleSpawnNeed(home, 'wall_breaker', BODY_COST);
             return false;
         }
 

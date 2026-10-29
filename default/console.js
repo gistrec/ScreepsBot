@@ -443,8 +443,10 @@ function labLine(ls) {
     return `${ls.output || '-'}: runnable ${ls.runnable}/${ls.total}${flags.length ? ', ' + flags.join(', ') : ''} (${age(ls.at)})`;
 }
 
-function spawnNeedLine(sn) {
-    return sn ? `ждёт ${sn.role} ${sn.needed}e (${age(sn.at)})` : 'не ждёт энергии';
+// Нужды цепочки и модулей (utils.freshSpawnNeeds - протухшие отброшены).
+function spawnNeedLine(mem) {
+    const needs = utils.freshSpawnNeeds(mem);
+    return needs.length ? needs.map(sn => `ждёт ${sn.role} ${sn.needed}e (${age(sn.at)})`).join('; ') : 'не ждёт энергии';
 }
 
 function statusFromMemory(name) {
@@ -453,7 +455,7 @@ function statusFromMemory(name) {
     const lines = [`${name}: комната не видна, данные из Memory.rooms (могут быть устаревшими)`];
     lines.push(table([
         ['Оборона:', mem.defending ? `ОБОРОНА, врагов ${mem.enemy_creeps || 0}` : `мир, врагов ${mem.enemy_creeps || 0}`],
-        ['Спавн:', spawnNeedLine(mem.spawn_need)],
+        ['Спавн:', spawnNeedLine(mem)],
         ['Лабы:', labLine(mem.lab_status)],
         ['Настройки:', isPlainObject(overrides) ? `${Object.keys(overrides).length} override (settings('${name}'))` : 'без override'],
     ]));
@@ -555,7 +557,7 @@ function statusCmd(roomArg) {
         ['Крипы:', [countLine(room, 'miner', roleMiner.configurations, minersNeed),
                     countLine(room, 'charger', null, chargersNeed),
                     countLine(room, 'upgrader', roleUpgrader.configurations, upgradersNeed)].join(', ')],
-        ['Спавн:', spawnNeedLine(mem.spawn_need)],
+        ['Спавн:', spawnNeedLine(mem)],
         ['Майнинг:', mining],
         ['Лабы:', labLine(mem.lab_status)],
     ]));

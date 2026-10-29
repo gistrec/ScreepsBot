@@ -59,7 +59,7 @@ const roleRemoteUpgrader = {
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
             console.log(`[${room.name}] Need RemoteUpgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
-            utils.recordSpawnNeed(room, 'remote_upgrader', creepConfiguration["energy"]);
+            utils.recordModuleSpawnNeed(room, 'remote_upgrader', creepConfiguration["energy"]);
             return false;
         }
 

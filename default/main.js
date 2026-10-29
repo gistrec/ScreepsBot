@@ -54,6 +54,7 @@ const modulePower     = require('modules/power');
 const modulePowerBank = require('modules/powerBank');
 
 const visualization = require('visualization');
+const utils = require('utils');
 const settings = require('settings');
 
 // Миграция старых Memory.X / room.memory.X в Memory.settings (v1). До чтения profiler_enabled.
@@ -95,8 +96,10 @@ function spawnCreeps(room) {
 
     // Сбрасываем перед циклом - первый заблокированный по энергии role перепишет.
     // Если все роли отработали (none blocked) - spawn_need остаётся очищенным,
-    // visualization ничего не покажет.
+    // visualization ничего не покажет. Нужды модулей (spawn_need_modules) здесь не трогаем -
+    // у них свой слот; только выкидываем протухшие (модуль перестал ждать).
     delete room.memory.spawn_need;
+    utils.pruneModuleSpawnNeeds(room.memory);
 
     for (const spawn of SPAWN_CHAIN) {
         if (!spawn(room)) return;
@@ -214,6 +217,12 @@ loop = function () {
                 const room = Game.rooms[roomName];
                 if (room && (!room.controller || !room.controller.my)) {
                     delete Memory.rooms[roomName];
+                } else {
+                    // Протухшие нужды спавна (старше SPAWN_NEED_TTL): в потерянных/невидимых комнатах
+                    // spawnCreeps их не чистит, а freshSpawnNeeds только скрывает - убираем из Memory.
+                    const mem = Memory.rooms[roomName];
+                    if (mem.spawn_need && !(Game.time - mem.spawn_need.at <= utils.SPAWN_NEED_TTL)) delete mem.spawn_need;
+                    utils.pruneModuleSpawnNeeds(mem);
                 }
             }
         }

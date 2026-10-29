@@ -763,6 +763,9 @@ function visualisePowerBankRoomStats() {
 // дать обычной логике (defend/spawn) запас. Настройка viz_min_bucket (default 3000), 0 -
 // отключить gate (например при отладке).
 exports.process = function() {
+    // viz_mode 'off' - визуализация выключена целиком (консоль: viz('off')). min/full пока
+    // рисуют одинаково - раздельные режимы приходят с переделкой панели (#20).
+    if (settings.get(null, 'viz_mode') === 'off') return;
     const minBucket = settings.get(null, 'viz_min_bucket');
     if (Game.cpu.bucket < minBucket) return;
 

@@ -294,6 +294,8 @@ const roleCharger = {
 };
 
 module.exports = roleCharger;
+// Для console.status (нужное число чарджеров = max_count текущего конфига).
+module.exports.configurations = configurations;
 
 
 module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.charger.spawn");

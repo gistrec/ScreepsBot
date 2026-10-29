@@ -25,9 +25,10 @@
 // Без `??`/`?.`: в коде бота их нигде нет, синтаксис держим на уровне остального кода.
 //
 // Поля записи реестра (для будущих settings()/set() в консоли):
-//   key, scope, type ('number'|'boolean'|'list'|'map'), def, desc, group,
+//   key, scope, type ('number'|'boolean'|'list'|'map'|'enum'), def, desc, group,
 //   min/max     - допустимый диапазон для number (и для значений map с valueType 'number'),
 //   valueType   - тип значений map: 'number' | 'string',
+//   values      - допустимые строки для enum,
 //   nullable    - def === null означает "вычисляется в коде / пусто" (см. desc),
 //   roomOnly    - room-ключ без global-слоя,
 //   legacy      - где ключ жил до v1: 'Memory' (Memory[key]), 'room' (room.memory[key]),
@@ -134,6 +135,8 @@ const ENTRIES = [
     // --- debug ---
     {key: 'profiler_enabled', scope: 'global', type: 'boolean', def: false, group: 'debug', legacy: 'Memory',
      desc: 'Включить screeps-profiler. Читается при загрузке кода: применится после global reset (push кода)'},
+    {key: 'viz_mode', scope: 'global', type: 'enum', values: ['off', 'min', 'full'], def: 'full', group: 'debug',
+     desc: 'Визуализация: off - не рисовать ничего, min/full - рисовать (до #20 min = full). Консоль: viz(режим)'},
     {key: 'viz_min_bucket', scope: 'global', type: 'number', def: 3000, min: 0, max: 10000, group: 'debug', legacy: 'Memory',
      desc: 'Не рисовать визуализацию при CPU bucket ниже. 0 = рисовать всегда'},
 ];
@@ -171,6 +174,8 @@ function checkValue(e, v) {
             return null;
         case 'boolean':
             return typeof v === 'boolean' ? null : `ожидается true/false, получено ${JSON.stringify(v)}`;
+        case 'enum':
+            return e.values.indexOf(v) >= 0 ? null : `ожидается одно из ${e.values.join('|')}, получено ${JSON.stringify(v)}`;
         case 'list':
             if (!Array.isArray(v)) return 'ожидается массив имён комнат';
             // Индексный цикл, не for...of: зовётся из get() (remote_rooms - каждый тик), без итератора.
@@ -198,6 +203,7 @@ function fastValid(e, v) {
     switch (e.type) {
         case 'number':  return inRange(e, v);
         case 'boolean': return typeof v === 'boolean';
+        case 'enum':    return e.values.indexOf(v) >= 0;
         case 'list':
         case 'map':     return checkValue(e, v) === null;
     }

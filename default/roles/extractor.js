@@ -46,7 +46,7 @@ const roleExtractor = {
         const extractor = room.find(FIND_MY_STRUCTURES, {filter: (structure) => structure.structureType == STRUCTURE_EXTRACTOR}).shift();
         if (!extractor) return true; // No need to spawn
 
-        const name  = 'Extractor' + Game.time;
+        const name  = utils.creepName('Extractor', room);
         const role = 'extractor';
         const mineral_id = mineral.id;
         const extractor_id = extractor.id;
@@ -97,6 +97,14 @@ const roleExtractor = {
                 return;
             }
             if (!mineral.mineralAmount) {
+                // Минерал кончился с недобранным трюмом (харвестили до последнего). Раньше суицид
+                // сразу - до 250 минерала в гробницу и на пол, подбирать некому (pickup только
+                // энергии). Сначала разгружаемся: harvesting=false уводит в fill-ветку выше,
+                // после выгрузки chechHarvesting вернёт сюда с пустым трюмом - тогда суицид.
+                if (creep.store.getUsedCapacity() > 0) {
+                    creep.memory.harvesting = false;
+                    return;
+                }
                 creep.suicide();
                 return;
             }

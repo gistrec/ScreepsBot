@@ -84,7 +84,7 @@ const roleMiner = {
             count: miners.filter((m) => m.memory.source_id == s.id).length,
         })).sort((a, b) => a.count - b.count).shift().source;
 
-        const name = 'Miner' + Game.time;
+        const name = utils.creepName('Miner', room);
         const role = 'miner';
         const miningPower = creepConfiguration["miningPower"];
         const source_id = targetSource.id;

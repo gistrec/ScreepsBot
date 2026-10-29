@@ -385,15 +385,25 @@ exports.checkUnboost = function(creep) {
     // 1. Получаем лабораторию, с которой будем работать.
     const lab = (() => {
         if (creep.memory.lab_id) {
-            return Game.getObjectById(creep.memory.lab_id);
+            const cached = Game.getObjectById(creep.memory.lab_id);
+            if (cached && cached.isActive()) return cached;
+            // Лаба снесена или выключена (downgrade RCL: unboostCreep -> ERR_RCL_NOT_ENOUGH) - выбираем заново.
+            delete creep.memory.lab_id;
         }
 
-        // Нужно выбрать неиспользуемую лабораторию без кулдауна, которая находится рядом с контейнером.
+        // Свободная лаба рядом с контейнером (unboostCreep роняет минерал на клетку крипа - стоим на
+        // контейнере). Source-лабы не трогаем, как checkBoost: их держат refillLabs/runReaction, а
+        // резерв по lab_id в lab.js действует только на target-лабы. Cooldown не фильтруем: при
+        // работающем пайплайне target-лабы почти всегда в cooldown, и задача удалялась как
+        // "Not found lab"; вместо этого ждём ERR_TIRED ниже - lab_id снимает лабу с реакций, cooldown спадёт.
+        const labConfig = labModule.getLabConfig(creep.room);
+        const sourceIds = new Set(labConfig ? labConfig.sources.map(l => l.id) : []);
         const usedLabs = Object.keys(Game.creeps).map(creepName => Game.creeps[creepName].memory.lab_id).filter(x => x);
         const containers = creep.room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_CONTAINER});
         const lab = creep.pos.findClosestByRange(FIND_MY_STRUCTURES, {
             filter: (s) => s.structureType == STRUCTURE_LAB
-                        && s.cooldown == 0
+                        && s.isActive()
+                        && !sourceIds.has(s.id)
                         && !usedLabs.includes(s.id)
                         && _.some(containers, container => container.pos.isNearTo(s))
         });
@@ -403,17 +413,28 @@ exports.checkUnboost = function(creep) {
     if (!lab) {
         console.log(`[${creep.room.name}][Unboost] Not found lab for ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
+        delete creep.memory.lab_id;
+        delete creep.memory.unboost_container_id;
         return ERR_NOT_FOUND;
     }
+    // Фиксируем лабу: без этого она выбиралась заново каждый тик (cooldown == 0), а контейнер
+    // ниже оставался от первой - крип стоял у контейнера одной лабы, unboostCreep звал другую
+    // (ERR_NOT_IN_RANGE), и задача молча снималась. lab_id заодно резервирует target-лабу от реакций
+    // (getBoostReservedLabIds) и других бустеров (usedLabs); checkBoost его при unboost не чистит.
+    creep.memory.lab_id = lab.id;
 
+    // Свой ключ, а не container_id: у майнера/харвестера container_id - контейнер source
+    // (sources.js), идти к нему бессмысленно, а записать туда lab-контейнер - сломать майнера.
     const container = (() => {
-        if (creep.memory.container_id) {
-            return Game.getObjectById(creep.memory.container_id);
-        }
+        // Кеш проверяем на соседство с лабой: ключ мог остаться от прошлой (отменённой руками)
+        // команды или от лабы, выбранной заново выше.
+        const cached = creep.memory.unboost_container_id && Game.getObjectById(creep.memory.unboost_container_id);
+        if (cached && cached.pos.isNearTo(lab)) return cached;
+        delete creep.memory.unboost_container_id;
         const containers = creep.room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_CONTAINER});
         for (const container of containers) {
             if (container.pos.isNearTo(lab)) {
-                creep.memory.container_id = container.id;
+                creep.memory.unboost_container_id = container.id;
                 return container;
             }
         }
@@ -422,6 +443,8 @@ exports.checkUnboost = function(creep) {
     if (!container) {
         console.log(`[${creep.room.name}][Unboost] Not found container for ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
+        delete creep.memory.lab_id;
+        delete creep.memory.unboost_container_id;
         return ERR_NOT_FOUND;
     }
 
@@ -430,8 +453,36 @@ exports.checkUnboost = function(creep) {
         return OK;
     }
 
-    lab.unboostCreep(creep);
-    delete creep.memory.unboost;
-    delete creep.memory.lab_id;
-    delete creep.memory.boosted;
+    // Результат раньше не проверялся: флаги снимались и при отказе (ERR_TIRED после реакции,
+    // ERR_NOT_IN_RANGE) - крип оставался с бустом, задача пропадала.
+    const status = lab.unboostCreep(creep);
+    switch (status) {
+        case OK:
+            delete creep.memory.unboost;
+            delete creep.memory.lab_id;
+            delete creep.memory.unboost_container_id;
+            delete creep.memory.boosted;
+            return OK;
+
+        case ERR_TIRED:
+            creep.say('⏳Cooldown');
+            return OK;
+
+        case ERR_NOT_FOUND:
+            // Бустов на теле нет - снимать нечего. boosted тоже снимаем: иначе upgrader навсегда
+            // остаётся без продления TTL (roles/upgrader.js, tasks/room.js).
+            console.log(`[${creep.room.name}][Unboost] ${creep.name} has no boosted parts. Unboost task was deleted.`);
+            delete creep.memory.unboost;
+            delete creep.memory.lab_id;
+            delete creep.memory.unboost_container_id;
+            delete creep.memory.boosted;
+            return ERR_NOT_FOUND;
+
+        default:
+            console.log(`[${creep.room.name}][Unboost] ${creep.name} error ${status} ${status.toStringStatus()}. Unboost task was deleted.`);
+            delete creep.memory.unboost;
+            delete creep.memory.lab_id;
+            delete creep.memory.unboost_container_id;
+            return ERR_NOT_FOUND;
+    }
 }

@@ -62,7 +62,7 @@ const roleUpgrader = {
 
         const boost = room.hasHostiles ? "XLH2O" : false; // Boost repair and build
         const role = 'upgrader';
-        const name = 'Upgrader' + Game.time;
+        const name = utils.creepName('Upgrader', room);
         const energyStructures = utils.getEnergyStructures(room, spawn);
         const result = spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, boost}, energyStructures});
         if (result !== OK) {
@@ -82,6 +82,14 @@ const roleUpgrader = {
         // Не чиним крипа, у которого есть буст
         if (!creep.memory.boosted) {
             if (taskCreep.checkTTL(creep) == OK) return; // Проверяем TTL бота
+        }
+
+        // link_id задаётся руками из консоли. Линк снесён/перестроен - раньше withdraw(null)
+        // давал ERR_INVALID_TARGET каждый тик, и апгрейдер с пустым трюмом стоял до смерти:
+        // ни в склад за энергией, ни к контроллеру. Сбрасываем - дальше обычный апгрейдер.
+        if (creep.memory.link_id && !Game.getObjectById(creep.memory.link_id)) {
+            console.log(`[${creep.room.name}] ${creep.name} link ${creep.memory.link_id} is gone, falling back to regular upgrader`);
+            delete creep.memory.link_id;
         }
 
         taskResource.chechHarvesting(creep);

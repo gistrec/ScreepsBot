@@ -422,12 +422,13 @@ exports.process = function() {
 // Классификация по запасу энергии - та же метрика, что в balanceEnergy (донор/получатель).
 // Считаем батарейки×10 (getTotalEnergy): они разжимаются обратно в энергию, поэтому комната
 // на батарейках по факту богатая. Используется визуализацией для иконки богатая/бедная.
-exports.classifyEnergy = function(room) {
+// stored - уже посчитанный запас (визуализация считает его раз за тик), иначе getTotalEnergy().
+exports.classifyEnergy = function(room, stored) {
     // Без терминала комната не участвует в обмене (как и в balanceEnergy) - ни донор, ни
     // получатель, поэтому ни rich, ни poor.
     if (!room.terminal) return 'neutral';
 
-    const stored = room.getTotalEnergy();
+    if (stored === undefined) stored = room.getTotalEnergy();
     if (stored > settings.get(null, 'rb_rich_stored_energy')) return 'rich';
     if (stored < settings.get(null, 'rb_poor_stored_energy')) return 'poor';
     return 'neutral';

@@ -121,16 +121,24 @@ exports.fillClosestStructure = function(creep, structure, count = 0, resourceTyp
 // Низкоприоритетная фоновая задача: закидываем nuker энергией/гудиумом, но только
 // когда комната "спокойна" - давно нет атаки, есть избыток ресурсов. Пороги - настройки
 // nuker_fill_min_total_energy, nuker_fill_peace_ticks.
-exports.nukerFillSafe = function(room) {
-    if (room.hasHostiles) return false;
+// Причина паузы заливки ('hostiles' | 'energy' | 'peace') или null - можно лить. Отдельно от
+// nukerFillSafe - для панели визуализации (показывает, почему nuker не заливается, по тем же
+// проверкам). total - уже посчитанный запас комнаты (визуализация считает его раз за тик),
+// иначе room.getTotalEnergy().
+exports.nukerFillBlockReason = function(room, total) {
+    if (room.hasHostiles) return 'hostiles';
 
     const minEnergy = settings.get(room, 'nuker_fill_min_total_energy');
-    if (room.getTotalEnergy() < minEnergy) return false;
+    if ((total === undefined ? room.getTotalEnergy() : total) < minEnergy) return 'energy';
 
     const minPeace = settings.get(room, 'nuker_fill_peace_ticks');
-    if (room.memory.last_attack_at && Game.time - room.memory.last_attack_at < minPeace) return false;
+    if (room.memory.last_attack_at && Game.time - room.memory.last_attack_at < minPeace) return 'peace';
 
-    return true;
+    return null;
+}
+
+exports.nukerFillSafe = function(room) {
+    return exports.nukerFillBlockReason(room) === null;
 }
 
 // Обёртка над fillClosestStructure(NUKER) с проверкой безопасности. Вызывается из

@@ -29,19 +29,33 @@ function maxHitsDrop(room, memKey, structures) {
 // получила бы только последняя. Module-level: живёт между тиками до global reset.
 let safeModeActivatedAt = -1;
 
-// Можно ли прямо сейчас включить safe mode. Повторяет проверки движка (activateSafeMode ->
-// ERR_NOT_ENOUGH_RESOURCES / ERR_TIRED / ERR_BUSY) плюс per-room override disable_safe_mode.
-// Без этого под defending (checkStatus каждый тик) триггер срабатывал каждый тик весь
-// safe mode и весь cooldown - с console.log + Game.notify (= письмо) на каждом тике.
-function canActivateSafeMode(room) {
+// Hold-down: defending держится ещё столько тиков после последней угрозы (см. checkStatus).
+// Экспорт - для панели визуализации (остаток hold-down).
+const DEFEND_HOLD_TICKS = exports.DEFEND_HOLD_TICKS = 50;
+
+// Почему safe mode сейчас нельзя включить (null - можно). Повторяет проверки движка
+// (activateSafeMode -> ERR_NOT_ENOUGH_RESOURCES / ERR_TIRED / ERR_BUSY) плюс per-room override
+// disable_safe_mode. Без этого под defending (checkStatus каждый тик) триггер срабатывал каждый
+// тик весь safe mode и весь cooldown - с console.log + Game.notify (= письмо) на каждом тике.
+// Причина-строка (а не bool) - для панели визуализации: она показывает, чем заблокирован
+// safe mode, по тем же проверкам. Порядок прежний: обход Game.rooms - последним.
+function safeModeBlockReason(room) {
     const controller = room.controller;
-    if (settings.get(room, 'disable_safe_mode')) return false;
-    if (safeModeActivatedAt == Game.time) return false;
-    if (controller.safeMode || controller.safeModeCooldown || !controller.safeModeAvailable) return false;
-    if (controller.upgradeBlocked) return false;
-    if (controller.ticksToDowngrade < CONTROLLER_DOWNGRADE[controller.level] / 2 - CONTROLLER_DOWNGRADE_SAFEMODE_THRESHOLD) return false;
+    if (settings.get(room, 'disable_safe_mode')) return 'auto off';
+    if (safeModeActivatedAt == Game.time) return 'activating';
+    if (controller.safeMode) return 'active';
+    if (controller.safeModeCooldown) return 'cooldown';
+    if (!controller.safeModeAvailable) return 'no charges';
+    if (controller.upgradeBlocked) return 'upgrade blocked';
+    if (controller.ticksToDowngrade < CONTROLLER_DOWNGRADE[controller.level] / 2 - CONTROLLER_DOWNGRADE_SAFEMODE_THRESHOLD) return 'downgrade';
     // Safe mode может быть активен только в одной комнате на шард.
-    return !_.some(Game.rooms, r => r.controller && r.controller.my && r.controller.safeMode);
+    if (_.some(Game.rooms, r => r.controller && r.controller.my && r.controller.safeMode)) return 'active elsewhere';
+    return null;
+}
+exports.safeModeBlockReason = safeModeBlockReason;
+
+function canActivateSafeMode(room) {
+    return safeModeBlockReason(room) === null;
 }
 
 exports.checkStatus = function(room) {
@@ -129,7 +143,6 @@ exports.checkStatus = function(room) {
 
     // Hold-down: держим defending ещё DEFEND_HOLD_TICKS после последней угрозы, чтобы
     // не флапать когда враг на тик скрылся из видимости (за рампартом, в exit-tile и т.п.).
-    const DEFEND_HOLD_TICKS = 50;
     const inHoldDown = room.memory.last_attack_at !== undefined
                     && (Game.time - room.memory.last_attack_at) <= DEFEND_HOLD_TICKS;
 

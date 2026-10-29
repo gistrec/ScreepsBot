@@ -54,14 +54,19 @@ const modulePower     = require('modules/power');
 const modulePowerBank = require('modules/powerBank');
 
 const visualization = require('visualization');
+const settings = require('settings');
+
+// Миграция старых Memory.X / room.memory.X в Memory.settings (v1). До чтения profiler_enabled.
+try { settings.migrate(); } catch (err) { err.log() }
 
 
 // Profiler оборачивает зарегистрированные функции; даже без profile() это лишний overhead.
-// Включается через консоль: `Memory.profiler_enabled = true` + обновление кода.
+// Включается настройкой profiler_enabled (Memory.settings.global) + обновление кода.
+// try: исключение здесь (опечатка ключа) не должно ломать загрузку main.
 const profiler = require('screeps-profiler');
-if (Memory.profiler_enabled) {
-    profiler.enable();
-}
+try {
+    if (settings.get(null, 'profiler_enabled')) profiler.enable();
+} catch (err) { err.log() }
 
 
 // Цепочка спавна: порядок load-bearing, см. CLAUDE.md / spawnCreeps. Каждая функция
@@ -157,7 +162,7 @@ function updateRoom(room) {
         taskResource.scheduleNukerGhodium(room);
     } catch(err) { err.log() };
 
-    // Покупка G на маркете - opt-in через room.memory.nuker_buy_max_price.
+    // Покупка G на маркете - настройка nuker_buy_max_price (0 = выключено).
     // getAllOrders() дорогая, поэтому реже чем scheduleNukerGhodium.
     if (Game.time % 5000 == 0) try {
         taskResource.buyNukerGhodium(room);
@@ -165,6 +170,9 @@ function updateRoom(room) {
 }
 
 loop = function () {
+    // Самовосстановление Memory.settings (если снесли руками); после миграции - одно сравнение.
+    try { settings.migrate(); } catch (err) { err.log() }
+
     // if (Game.cpu.bucket >= 10000) try {
     //     Game.cpu.generatePixel()
     // } catch (err) { err.log() };

@@ -1,5 +1,6 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
+const settings = require('../settings');
 
 // TODO: Check link near source
 
@@ -21,8 +22,6 @@ const P = STRUCTURE_POWER_SPAWN
 
 const spawn_offset_x = exports.spawn_offset_x = 8;
 const spawn_offset_y = exports.spawn_offset_y = 6;
-
-const skip_rooms = ["W9S37", "W8S38"]
 
 // TODO: Build extractor
 // TODO: Build links near sources
@@ -538,7 +537,8 @@ exports.process = function() {
             continue;
         }
 
-        if (skip_rooms.includes(room.name)) {
+        // Комнаты с ручной планировкой (бывший skip_rooms: W9S37, W8S38 - сеются миграцией).
+        if (settings.get(room, 'auto_build_disabled')) {
             continue;
         }
 

@@ -1,4 +1,5 @@
 const profiler = require('../screeps-profiler');
+const settings = require('../settings');
 
 
 // Maintain a permanent battery buffer in the factory so decompression can start
@@ -30,15 +31,15 @@ function ensureFactoryHasBatteries(room) {
 // энергии getStoredEnergy() - батарейки повторно не сжать. Единая метрика на класс держит
 // классы взаимоисключающими: раньше veryRich шёл по сумме, а rich/poor - по терминалу, и
 // комната могла быть одновременно "очень богатой" и "бедной".
-const POOR_STORED_ENERGY      = 50000;   // ниже - комнате нужна энергия
-const RICH_STORED_ENERGY      = 100000;  // выше - комната может делиться
-const VERY_RICH_STORED_ENERGY = 200000;  // выше - сжимаем излишки в батарейки
+// Пороги классов - настройки (settings.js): rb_poor_stored_energy (50k, ниже - комнате нужна
+// энергия), rb_rich_stored_energy (100k, выше - может делиться), rb_very_rich_stored_energy
+// (200k, выше - сжимаем излишки в батарейки).
 
 // Транспортные предусловия (терминал - буфер пересылки, а не показатель богатства).
 const TERMINAL_DONATE_ENERGY  = 50000;   // донор должен иметь столько энергии в терминале
 const TERMINAL_RECEIVE_FREE   = 30000;   // получателю нужно столько свободного места
 const TERMINAL_ENERGY_FLOOR   = 30000;   // столько энергии оставляем в терминале донора
-const POOR_RECEIVE_FREE       = 60000;   // не шлём, если у получателя меньше места под трансфер
+const POOR_RECEIVE_FREE       = exports.POOR_RECEIVE_FREE = 60000; // не шлём, если у получателя меньше места под трансфер (читает и charger)
 const MAX_TRANSFER_ENERGY     = 30000;   // максимум за одну пересылку
 
 // Батарейки как дешёвый транспорт энергии между комнатами: налог Game.market считается по
@@ -118,7 +119,7 @@ function stageBatteriesForExport(room) {
 // батарейки, которые донор сам застейджил под экспорт (у донора stored большой).
 function drainTerminalBatteries(room) {
     if (!room.terminal || !room.storage) return;
-    if (room.getStoredEnergy() >= POOR_STORED_ENERGY) return;
+    if (room.getStoredEnergy() >= settings.get(null, 'rb_poor_stored_energy')) return;
     if (room.terminal.store.getUsedCapacity(RESOURCE_BATTERY) === 0) return;
 
     const alreadyAssigned = room.find(FIND_MY_CREEPS, {filter: c =>
@@ -217,6 +218,9 @@ exports.balanceEnergy = function() {
     // комнате: сортировка получателей у каждого донора берёт снимок из классификации и не зовёт
     // getFactory() заново, т.е. получатель, прошедший классификацию, в сортировке не бросит.
     const totalEnergy = room => room.cache('totalEnergy', r => r.getTotalEnergy());
+    const POOR_STORED_ENERGY      = settings.get(null, 'rb_poor_stored_energy');
+    const RICH_STORED_ENERGY      = settings.get(null, 'rb_rich_stored_energy');
+    const VERY_RICH_STORED_ENERGY = settings.get(null, 'rb_very_rich_stored_energy');
 
     // try/catch на комнату (здесь и в циклах ниже): исключение в одной комнате не должно
     // отменять балансировку для всех следующих по порядку обхода Game.rooms - main.js ловит
@@ -375,7 +379,7 @@ exports.processFactory = function() {
 
             // 2. Surplus-декомпрессия: только излишек сверх резерва. ensureFactoryHasBatteries
             //    подпитывает фабрику из storage, поэтому считаем суммарно factory+storage.
-            if (stored < POOR_STORED_ENERGY
+            if (stored < settings.get(null, 'rb_poor_stored_energy')
                     && factoryBattery + storageBattery > BATTERY_EMERGENCY_RESERVE
                     && factoryBattery >= 50) {
                 factory.produce(RESOURCE_ENERGY);
@@ -390,7 +394,7 @@ exports.processFactory = function() {
             //    резерва (разжала 500, сжала 600: -100 энергии за цикл), а в небогатой энергия,
             //    поданная ensureFactoryHasMineral под бары, уходила в батарейки, которые из
             //    фабрики никто не выгружает.
-            if (room.terminal && stored > VERY_RICH_STORED_ENERGY
+            if (room.terminal && stored > settings.get(null, 'rb_very_rich_stored_energy')
                     && factoryEnergy >= 600 && terminalBattery < 10000) {
                 factory.produce(RESOURCE_BATTERY);
                 break;
@@ -424,8 +428,8 @@ exports.classifyEnergy = function(room) {
     if (!room.terminal) return 'neutral';
 
     const stored = room.getTotalEnergy();
-    if (stored > RICH_STORED_ENERGY) return 'rich';
-    if (stored < POOR_STORED_ENERGY) return 'poor';
+    if (stored > settings.get(null, 'rb_rich_stored_energy')) return 'rich';
+    if (stored < settings.get(null, 'rb_poor_stored_energy')) return 'poor';
     return 'neutral';
 }
 

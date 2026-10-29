@@ -4,15 +4,15 @@ const utils        = require('../utils');
 const sources      = require('../sources');
 
 const taskResource = require('../tasks/resource');
+const settings     = require('../settings');
 
 
 // 1 WORK part - 2 energy per tick
 // 3000 Energy in owned room + Regenerate every 300 game ticks ~= Regenerate 10 energy per tick ~= 5 WORK part
 
 // Когда суммарная энергия (включая батарейки×10) в storage/terminal/factory превышает этот
-// порог - перестаём спавнить майнеров: складам некуда деваться. Существующие доживут TTL.
-// Можно переопределить per-room через room.memory.miner_pause_total_energy.
-const DEFAULT_MINER_PAUSE_TOTAL_ENERGY = 2_000_000;
+// порог (настройка miner_pause_total_energy, default 2M) - перестаём спавнить майнеров:
+// складам некуда деваться. Существующие доживут TTL.
 
 // Восстановление после вайпа: сколько тиков первый майнер ждёт полное тело, пока чарджер
 // доливает spawn/extension из складов. Дальше - тело по energyAvailable, как раньше (склад
@@ -45,7 +45,7 @@ const roleMiner = {
 
         // Если стокпайл насыщен - не спавним замены. Старые доживут и источник простаивает,
         // пока энергия не уйдёт на upgrade/repair/что-нибудь ещё.
-        const pauseThreshold = room.memory.miner_pause_total_energy || DEFAULT_MINER_PAUSE_TOTAL_ENERGY;
+        const pauseThreshold = settings.get(room, 'miner_pause_total_energy');
         if (room.getTotalEnergy() > pauseThreshold) {
             return true;
         }

@@ -4,6 +4,8 @@ const utils = require('../utils');
 
 const taskResource = require('../tasks/resource');
 const taskCreep  = require('../tasks/creep');
+const resourceBalance = require('../modules/resourceBalance');
+const settings   = require('../settings');
 
 
 // max_count подобран по реальной потребности: 2 source × 10 e/tick = 20 e/tick валового
@@ -32,17 +34,15 @@ function findStructureNearSpawn(spawn, structureType) {
 }
 
 // Резерв энергии в терминале под пересылки и маркет (см. fill-цепочку в run).
-// Override: room.memory.terminal_energy_reserve.
+// Настройка terminal_energy_reserve (default 100k).
 function terminalEnergyReserve(room) {
-    return room.memory.terminal_energy_reserve !== undefined ? room.memory.terminal_energy_reserve : 100000;
+    return settings.get(room, 'terminal_energy_reserve');
 }
 
-// Пороги modules/resourceBalance.js (там не экспортируются) - держать в синхроне:
-// POOR_RECEIVE_FREE - столько свободного места нужно терминалу получателя под входящий send
-// (это же покрывает 10k под lab-пересылку и 3k под батарейки на экспорт);
-// POOR_STORED_ENERGY - ниже комната бедная, энергию ей шлют, а не она копит её в терминале.
-const RB_POOR_RECEIVE_FREE  = 60000;
-const RB_POOR_STORED_ENERGY = 50000;
+// Пороги балансировки - из modules/resourceBalance.js и settings, без копий:
+// resourceBalance.POOR_RECEIVE_FREE - столько свободного места нужно терминалу получателя под
+// входящий send (это же покрывает 10k под lab-пересылку и 3k под батарейки на экспорт);
+// rb_poor_stored_energy - ниже комната бедная, энергию ей шлют, а не она копит её в терминале.
 
 // Терминал ниже резерва, и его есть чем долить из storage. Кроме чарджера энергию
 // storage -> terminal никто не возит (resourceBalance шлёт из терминала, но не пополняет его),
@@ -52,7 +52,7 @@ const RB_POOR_STORED_ENERGY = 50000;
 // из storage первым, а обратного пути terminal -> storage для энергии нет; место в терминале
 // под полный трюм - иначе остаток каждый рейс возвращался бы в storage.
 // Доливка не съедает место под входящие пересылки: после рейса в терминале остаётся
-// >= RB_POOR_RECEIVE_FREE свободного. Бедную комнату не доливаем вовсе - она получатель.
+// >= POOR_RECEIVE_FREE свободного. Бедную комнату не доливаем вовсе - она получатель.
 function terminalNeedsStorageEnergy(creep) {
     const terminal = creep.room.terminal;
     const storage  = creep.room.storage;
@@ -61,9 +61,9 @@ function terminalNeedsStorageEnergy(creep) {
     // storage не пройдёт, энергия возьмётся из терминала и вернётся в него же (пинг-понг).
     if (utils.isUnreachable(creep, terminal.id) || utils.isUnreachable(creep, storage.id)) return false;
     return terminal.store.getUsedCapacity(RESOURCE_ENERGY) < terminalEnergyReserve(creep.room)
-        && terminal.store.getFreeCapacity() - creep.store.getCapacity() >= RB_POOR_RECEIVE_FREE
+        && terminal.store.getFreeCapacity() - creep.store.getCapacity() >= resourceBalance.POOR_RECEIVE_FREE
         && storage.store.getUsedCapacity(RESOURCE_ENERGY) > 20000
-        && creep.room.getTotalEnergy() >= RB_POOR_STORED_ENERGY;
+        && creep.room.getTotalEnergy() >= settings.get(null, 'rb_poor_stored_energy');
 }
 
 // Парковка чарджера в фиксированной точке (storage.x+1, storage.y) - в layout-е
@@ -246,11 +246,11 @@ const roleCharger = {
                 // Power_spawn - тоже потребитель (при power в нём или в пути, см. powerSpawnNeedingEnergy):
                 // при паузе майнинга (насыщенная комната) линк пуст, нести нечего, и он стоял с
                 // power, но без энергии. Из складов под него берём только при запасе
-                // >= power_spawn_min_stored_energy (default 50k = POOR_STORED_ENERGY в resourceBalance,
+                // >= power_spawn_min_stored_energy (default 50k = default rb_poor_stored_energy,
                 // та же метрика getTotalEnergy: энергия + батарейки×10): в бедной энергия нужнее спавну.
                 // Терминал ниже резерва - тоже спрос (storage -> terminal, см. terminalNeedsStorageEnergy).
                 const byType = utils.getMyStructuresByType(creep.room);
-                const psMinStored = creep.room.memory.power_spawn_min_stored_energy || 50000;
+                const psMinStored = settings.get(creep.room, 'power_spawn_min_stored_energy');
                 // Потребители из списка недостижимых (utils.moveToTarget) - не спрос: fill-цепочка
                 // их пропускает, и взятое из storage вернулось бы в storage (пинг-понг).
                 const reachable = (s) => !utils.isUnreachable(creep, s.id);

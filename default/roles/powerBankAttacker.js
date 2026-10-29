@@ -1,6 +1,8 @@
+const settings = require('../settings');
+
 // Travel в комнату банка через безопасный маршрут: Game.map.findRoute со
 // штрафом Infinity на чужие owned-комнаты (видимые сейчас + засёрвейенные)
-// плюс ручной Memory.travel_avoid_rooms. Кешируем next-exit на creep.memory._route
+// плюс ручная настройка travel_avoid_rooms. Кешируем next-exit на creep.memory._route
 // до перехода в следующую комнату - findRoute стоит ~0.1 CPU, реcompute только
 // при пересечении границы.
 function travelToBankRoom(creep, bankPos) {
@@ -24,7 +26,8 @@ function travelToBankRoom(creep, bankPos) {
                 }
                 if (Memory.roomSurvey && Memory.roomSurvey[roomName] && Memory.roomSurvey[roomName].owned
                     && !(visible && visible.controller && visible.controller.my)) return Infinity;
-                if ((Memory.travel_avoid_rooms || []).includes(roomName)) return Infinity;
+                const avoid = settings.get(null, 'travel_avoid_rooms');
+                if (avoid && avoid.includes(roomName)) return Infinity;
                 return 1;
             },
         });

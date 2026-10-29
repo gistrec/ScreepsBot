@@ -398,7 +398,7 @@ function computeDangerSet(terrain) {
 // Ramparts могут наслаиваться поверх любых structure - createConstructionSite сработает
 // и на extension/tower/lab; на terrain wall - пропускаем. Также пропускаем тайлы,
 // отрезанные стенами от краёв комнаты (враг туда не дойдёт).
-function buildRamparts(room, spawn) {
+function buildRamparts(room, anchor) {
     if (room.controller.level < 8) return;
 
     const terrain = room.getTerrain();
@@ -411,8 +411,8 @@ function buildRamparts(room, spawn) {
             const layer = Math.min(x, y, SIZE - 1 - x, SIZE - 1 - y);
             if (layer >= LAYERS) continue;
 
-            const px = spawn.pos.x + x - spawn_offset_x;
-            const py = spawn.pos.y + y - spawn_offset_y;
+            const px = anchor.x + x - spawn_offset_x;
+            const py = anchor.y + y - spawn_offset_y;
             if (px < 1 || px > 48 || py < 1 || py > 48) continue;
             if (terrain.get(px, py) === TERRAIN_MASK_WALL) continue;
             // Тайл недостижим для enemy: ни walkable доступа, ни ranged-attack в range 3.
@@ -427,6 +427,43 @@ function buildRamparts(room, spawn) {
     }
 }
 
+// Суффикс имени спавна по его смещению от primary в схеме: primary=`{roomName}`, D - слева
+// от primary, E - снизу. Без явного имени Screeps авто-генерирует "Spawn1/Spawn2", и
+// console-команды вида Game.spawns['W12S37D'] перестают работать.
+function spawnSuffix(dx, dy) {
+    return dy > 0 ? 'E' : dx < 0 ? 'D' : '';
+}
+
+// Смещение каждого спавна относительно primary - из schemes[8] (единственный источник правды
+// о позициях спавнов), считается один раз при загрузке: {'': {0,0}, D: {-4,0}, E: {-2,4}}.
+const spawnOffsets = (() => {
+    const offsets = {};
+    const scheme = schemes[8];
+    for (let y = 0; y < scheme.length; y++) {
+        for (let x = 0; x < scheme[y].length; x++) {
+            if (scheme[y][x] !== B) continue;
+            const dx = x - spawn_offset_x;
+            const dy = y - spawn_offset_y;
+            offsets[spawnSuffix(dx, dy)] = {dx, dy};
+        }
+    }
+    return offsets;
+})();
+
+// Anchor базы - позиция primary спавна (в схеме (spawn_offset_x, spawn_offset_y)). Если primary
+// разрушен, восстанавливаем anchor по уцелевшему `{roomName}D`/`{roomName}E` через смещения из
+// схемы - иначе layout (включая сам primary, extractor и рампарты) никогда не перестроится.
+// Primary приоритетнее: по нему anchor точный по определению.
+function getBaseAnchor(room) {
+    for (const suffix of ['', 'D', 'E']) {
+        const spawn = Game.spawns[room.name + suffix];
+        const offset = spawnOffsets[suffix];
+        if (!spawn || spawn.room.name !== room.name || !offset) continue;
+        return new RoomPosition(spawn.pos.x - offset.dx, spawn.pos.y - offset.dy, room.name);
+    }
+    return null;
+}
+
 // Возвращает true, когда обработка выполнена (нашли спавн и прошлись по schemes),
 // false при ранних выходах. Caller (build.process) использует это, чтобы не пометить
 // уровень комнаты "обработанным" если на самом деле не разместили ни одной structure -
@@ -436,14 +473,16 @@ exports.buildMissingStructures = function(room) {
         console.log(`[${room.name}][BUILD] Room is not mine`);
         return false;
     }
-    const spawn = room.find(FIND_MY_SPAWNS, {filter: (s) => s.structureType == STRUCTURE_SPAWN && s.name == room.name}).shift();
-    if (!spawn) {
-        console.log(`[${room.name}][BUILD] Spanw not found`);
+    const anchor = getBaseAnchor(room);
+    if (!anchor) {
+        console.log(`[${room.name}][BUILD] Spawn not found`);
         return false;
     }
 
     const terrain = room.getTerrain();
-    for (let level = 2; level <= room.controller.level; level++) {
+    // С уровня 1: в schemes[1] только primary спавн, и до RCL 8 он больше нигде не встречается -
+    // без этого разрушенный primary на RCL 7 не пересоздаётся (anchor по D есть, сайта нет).
+    for (let level = 1; level <= room.controller.level; level++) {
         const scheme = schemes[level];
         for (let y = 0; y < scheme.length; y++) {
             for (let x = 0; x < scheme[y].length; x++) {
@@ -451,8 +490,12 @@ exports.buildMissingStructures = function(room) {
                     continue;
                 }
                 const structure = scheme[y][x];
-                const px = spawn.pos.x + x - spawn_offset_x;
-                const py = spawn.pos.y + y - spawn_offset_y;
+                const px = anchor.x + x - spawn_offset_x;
+                const py = anchor.y + y - spawn_offset_y;
+                // Схема может вылезать за комнату (спавн у края): RoomPosition с координатой
+                // вне 0..49 бросает исключение, а terrain.get его не ловит. На краевых клетках
+                // (0/49) движок всё равно ничего не ставит - тот же диапазон, что в buildRamparts.
+                if (px < 1 || px > 48 || py < 1 || py > 48) continue;
                 // На стенах рампарт не строится, поэтому road на стене останется без защиты;
                 // плюс road-on-wall стоит 150× обычного. Прочие структуры на стенах вообще
                 // не ставятся (ERR_INVALID_TARGET). Skip - и для road-кейса, и для самого
@@ -467,17 +510,12 @@ exports.buildMissingStructures = function(room) {
                 if (structuresAtPos.length === 0
                         || structuresAtPos.every(s => s.structureType == STRUCTURE_RAMPART)) {
                     if (structure === STRUCTURE_SPAWN) {
-                        // Имена спавнов фиксированы: primary=`{roomName}`, D - слева от primary,
-                        // E - снизу. Без явного имени Screeps авто-генерирует "Spawn1/Spawn2",
-                        // и console-команды вида Game.spawns['W12S37D'] перестают работать.
-                        // Primary B в схеме совпадает с уже стоящим спавном (claimer создаёт его
-                        // с именем room.name) - structuresAtPos для primary не пуст, сюда не дойдём.
+                        // Имена спавнов фиксированы (см. spawnSuffix). Пока primary стоит,
+                        // structuresAtPos для него не пуст и сюда не дойдём; если primary разрушен,
+                        // anchor восстановлен по D/E, и primary пересоздаётся с именем room.name.
                         const dy = y - spawn_offset_y;
                         const dx = x - spawn_offset_x;
-                        const spawnName = dy > 0 ? `${room.name}E`
-                                        : dx < 0 ? `${room.name}D`
-                                                 : room.name;
-                        room.createConstructionSite(pos, structure, spawnName);
+                        room.createConstructionSite(pos, structure, room.name + spawnSuffix(dx, dy));
                     } else {
                         room.createConstructionSite(pos, structure);
                     }
@@ -487,12 +525,14 @@ exports.buildMissingStructures = function(room) {
     }
 
     buildExtractor(room);
-    buildRamparts(room, spawn);
+    buildRamparts(room, anchor);
     return true;
 }
 
 exports.process = function() {
-    for (const roomName in Game.rooms) {
+    // try/catch на комнату: исключение в одной комнате не должно отменять стройку
+    // (schemes, контейнеры, линки) во всех следующих по порядку обхода Game.rooms.
+    for (const roomName in Game.rooms) try {
         const room = Game.rooms[roomName];
         if (!room.controller || !room.controller.my) {
             continue;
@@ -524,7 +564,7 @@ exports.process = function() {
             // Source-link строится после контейнера, ставит 1 site за вызов.
             buildLinksNearSources(room);
         }
-    }
+    } catch (err) { err.log() }
 }
 
 exports.hasEnoughSpaceForBase = function(room, baseSise = 13) {

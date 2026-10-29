@@ -6,6 +6,9 @@ const configurations = [
 ]
 
 
+STATUS_CLAIMING = "claiming";
+
+
 const roleClaimer = {
     spawn: function() {
         if (Memory.expansion.status !== 'scout') {
@@ -57,9 +60,10 @@ const roleClaimer = {
         }
         if (!Memory.expansion.roomName || Memory.expansion.status == "scout") {
             Memory.expansion.roomName = creep.room.name;
-            Memory.expansion.status = 'claimer';
+            // Статус, который ждёт claimer.spawn (STATUS_CLAIMING); 'claimer' никто не читал.
+            Memory.expansion.status = STATUS_CLAIMING;
             console.log(`[${creep.room.name}][EXPANSION] Scout found expand room`);
-            console.log(`[${creep.room.name}][EXPANSION] Claiming status change scout->claimer`);
+            console.log(`[${creep.room.name}][EXPANSION] Claiming status change scout->${STATUS_CLAIMING}`);
         }
 
         // Idle...

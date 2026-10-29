@@ -43,9 +43,14 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
     // transfer all resources
     const status = (() => {
         if (resourceType != RESOURCES_ALL) {
+            // Нечего отдавать - не ошибка transfer'а (ERR_NOT_ENOUGH_RESOURCES с "⚠️Error" в лог
+            // каждый тик), а "эта цель не для нас": чарджер с одним минералом в трюме доходит
+            // до energy-only шагов цепочки (lab, power_spawn) и должен пройти дальше.
+            if (!creep.store.getUsedCapacity(resourceType)) return ERR_NOT_FOUND;
             return creep.transfer(target, resourceType);
         }
 
+        let issued = false;
         for(const resourceType in creep.store) {
             // getFreeCapacity возвращает null если структура не принимает этот ресурс
             // (lab с другим mineralType, spawn/ext/tower с минералом). Пропускаем -
@@ -54,14 +59,22 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
             if (free === null || free === 0) continue;
             const status = creep.transfer(target, resourceType);
             if (status != OK) return status;
+            issued = true;
         }
-        return OK;
+        // Цель не принимает ничего из трюма (башня/спавн при минерале в трюме, lab с чужим
+        // минералом). Раньше возвращали OK: вызывающий считал цель найденной, и чарджер
+        // с минералом после удалённой transfer-задачи вставал на шаге "tower" навсегда,
+        // не доходя до terminal/storage. Теперь это "цели нет" - цепочка идёт дальше.
+        return issued ? OK : ERR_NOT_FOUND;
     })();
 
     switch (status) {
         case OK:
         case ERR_BUSY: // Бот еще спавнится
             return OK;
+
+        case ERR_NOT_FOUND: // Нечего/некуда класть - цели нет (см. выше), без лога
+            return ERR_NOT_FOUND;
 
         case ERR_NOT_IN_RANGE:
             creep.moveTo(target, {
@@ -84,18 +97,21 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
 
 /**
  * Заполняем ближайшую незаполненную структуру.
- * @param {Object} creep     - бот
- * @param {String} structure - тип структуры, которую нужно заполнить
- * @param {Number} count     - количество ресурсов, для заполнения структуры
+ * @param {Object} creep        - бот
+ * @param {String} structure    - тип структуры, которую нужно заполнить
+ * @param {Number} count        - количество ресурсов, для заполнения структуры
+ * @param {String} resourceType - что класть: по умолчанию всё из трюма (RESOURCES_ALL);
+ *                                RESOURCE_ENERGY - только энергию (lab из fill-цепочки:
+ *                                иначе случайный минерал из трюма уедет в реакционную лабу)
  */
-exports.fillClosestStructure = function(creep, structure, count = 0) {
+exports.fillClosestStructure = function(creep, structure, count = 0, resourceType = RESOURCES_ALL) {
     const candidates = utils.getStructuresByType(creep.room)[structure] || [];
     const target = creep.pos.findClosestByRange(candidates, {
         filter: (s) => s.store && s.store.getFreeCapacity(RESOURCE_ENERGY) > count
     });
     if (!target) return ERR_NOT_FOUND;
 
-    return exports.fillTarget(creep, target);
+    return exports.fillTarget(creep, target, resourceType);
 }
 
 
@@ -326,13 +342,33 @@ exports.schedulePowerSpawnPower = function(room) {
     room.transfer(RESOURCE_POWER, source.id, ps.id);
 }
 
+// Power_spawn, которому пора долить энергии (свободно >= 1000), или null. Один порог на
+// fill-цепочку (fillPowerSpawnEnergy) и на realDemand чарджера (roles/charger.js): без
+// второго в насыщенной комнате (майнинг на паузе, линк пуст) чарджеру нечего нести, и
+// power_spawn стоит с power, но без энергии.
+// Энергия нужна только вместе с power: processPower тратит 50 energy + 1 power за тик
+// (modules/power.js), без power в power_spawn'е и без чарджера, который его уже везёт
+// (schedulePowerSpawnPower), энергия просто осядет. Под атакой не льём совсем (как и power -
+// schedulePowerSpawnPower): энергия из защищённых складов нужна башням, а не GPL.
+exports.powerSpawnNeedingEnergy = function(room) {
+    if (room.memory.power_disabled) return null;
+    if (room.isUnderAttack) return null;
+    const ps = (utils.getMyStructuresByType(room)[STRUCTURE_POWER_SPAWN] || [])[0];
+    if (!ps) return null;
+    if (ps.store.getFreeCapacity(RESOURCE_ENERGY) < 1000) return null;
+    const hasPower = ps.store.getUsedCapacity(RESOURCE_POWER) > 0
+        || utils.creepsByRole(room, 'charger').some(c => c.memory.transfer
+            && c.memory.transfer.target_id == ps.id
+            && c.memory.transfer.resource_type == RESOURCE_POWER);
+    if (!hasPower) return null;
+    return ps;
+}
+
 // Заливает energy в power_spawn если он не полон. Возвращает OK когда задача найдена,
 // чтобы выпасть из fill-chain. Включается в charger peace branch перед fillNukerIfCalm.
 exports.fillPowerSpawnEnergy = function(creep) {
-    if (creep.room.memory.power_disabled) return ERR_NOT_FOUND;
-    const ps = (utils.getMyStructuresByType(creep.room)[STRUCTURE_POWER_SPAWN] || [])[0];
+    const ps = exports.powerSpawnNeedingEnergy(creep.room);
     if (!ps) return ERR_NOT_FOUND;
-    if (ps.store.getFreeCapacity(RESOURCE_ENERGY) < 1000) return ERR_NOT_FOUND;
     return exports.fillTarget(creep, ps, RESOURCE_ENERGY);
 }
 
@@ -485,19 +521,44 @@ exports.withdrawTarget = function(creep, target, resourceType = RESOURCE_ENERGY,
  * @param resourceType  - Тип ресурсов, которые нужно получить.
  * @param resourceCount - Количество ресурсов, которые нужно получить.
  *                        Если не указано, то получаем все доступные ресурсы.
+ * @param minCount      - Минимум ресурса в складе, чтобы вообще к нему идти. По умолчанию
+ *                        равен resourceCount: берём только полную порцию (чарджер не "висит"
+ *                        на контейнере майнера, собирая по 10/тик). minCount = 1 - забрать
+ *                        всё, что есть (остаток storage после атаки, хвост батареек): тогда
+ *                        withdraw идёт на min(resourceCount, остаток), а не на resourceCount,
+ *                        иначе движок вернёт ERR_NOT_ENOUGH_RESOURCES.
  */
-exports.withdrawClosestResources = function(creep, structures, resourceType = RESOURCE_ENERGY, resourceCount = 0) {
+exports.withdrawClosestResources = function(creep, structures, resourceType = RESOURCE_ENERGY, resourceCount = 0, minCount = null) {
     if (resourceCount === 0) {
         resourceCount = creep.store.getFreeCapacity();
     }
+    if (minCount === null) minCount = resourceCount;
+    minCount = Math.max(1, minCount);
     const byType = utils.getStructuresByType(creep.room);
     const candidates = structures.flatMap(t => byType[t] || []);
     const target = creep.pos.findClosestByRange(candidates, {
-        filter: (s) => s.store && s.store.getUsedCapacity(resourceType) >= resourceCount
+        filter: (s) => s.store && s.store.getUsedCapacity(resourceType) >= minCount
     });
     if (!target) return ERR_NOT_FOUND;
 
-    return exports.withdrawTarget(creep, target, resourceType, resourceCount);
+    const amount = Math.min(resourceCount, target.store.getUsedCapacity(resourceType));
+    return exports.withdrawTarget(creep, target, resourceType, amount);
+}
+
+
+// Трюм целиком занят чужим грузом, а terminal/storage выгрузку не приняли (полны или их нет).
+// Энергию разнесёт fill-цепочка чарджера - отдаём ей тик (ERR_NOT_FOUND). Минералы/батарейки
+// на пол не выбрасываем (никто не подберёт - та же политика, что dumpCargo в tasks/boost.js):
+// стоим с задачей и ждём места, логируем раз в 100 тиков. Задачу не снимаем: alreadyAssigned-
+// проверки диспетчеров видят её и не плодят дубли, а при появлении места груз выгрузится и
+// задача продолжится.
+function stallWithForeignCargo(creep, what) {
+    if (creep.store.getUsedCapacity(RESOURCE_ENERGY)) return ERR_NOT_FOUND;
+    if (Game.time % 100 == 0) {
+        console.log(`[${creep.room.name}] ${creep.name} can't unload foreign cargo for ${what}: terminal+storage full.`);
+    }
+    creep.say('🚧Stall');
+    return OK;
 }
 
 
@@ -509,41 +570,57 @@ exports.disassembleResource = function(creep) {
     // Не теряем задачу - просто пропускаем тик; вернёмся, когда условие снимется.
     if (shouldInterruptStatefulTask(creep)) return ERR_NOT_FOUND;
 
-    // Выкидываем лишние ресурсы крипа.
+    // Выкидываем лишние ресурсы крипа. Только лишние (по одному за тик - интенты крипа
+    // перезаписываются): раньше через RESOURCES_ALL уезжал весь трюм вместе с ресурсом задачи,
+    // и из полного склада-источника (место в нём освобождается ровно на то, что взяли)
+    // ресурс каждый второй тик возвращался обратно.
     if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resourceType)) {
         creep.say(`Remove extra resource`);
-        if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
-        if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return OK;
-        return OK;
+        const extraType = Object.keys(creep.store).find(r => r != resourceType);
+        if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL, 0, extraType) == OK) return OK;
+        if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE, 0, extraType) == OK) return OK;
+        // Выгрузить некуда: складов нет или оба физически полны. Раньше здесь был return OK -
+        // чарджер стоял с задачей навсегда. Везём лишнее с собой: задача идёт на оставшейся
+        // вместимости (fillTarget кладёт только resourceType), а выгрузка повторится, как
+        // только место появится. Трюм целиком занят чужим грузом (ни места, ни resourceType) -
+        // см. stallWithForeignCargo.
+        if (creep.store.getFreeCapacity() == 0 && !creep.store.getUsedCapacity(resourceType)) {
+            return stallWithForeignCargo(creep, `disassemble ${resourceType}`);
+        }
     }
 
     const factory = creep.room.getFactory();
     if (!factory) {
         delete creep.memory.disassemble;
-        return OK;
+        return ERR_NOT_FOUND;
     }
     if (factory.store.getFreeCapacity() <= 5000) {
         if (creep.store.getUsedCapacity() != 0) {
             creep.say(`Remove battery`);
-            exports.fillClosestStructure(creep, STRUCTURE_TERMINAL);
-        } else {
-            console.log(`[${creep.room.name}] Factory overflowing for disassemble resource ${resourceType}. Task was deleted.`);
-            delete creep.memory.disassemble;
+            if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
+            if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return OK;
+            // Некуда выгрузить - задачу всё равно снимаем (см. ниже), груз разнесёт fill-цепочка.
         }
-        return OK;
+        console.log(`[${creep.room.name}] Factory overflowing for disassemble resource ${resourceType}. Task was deleted.`);
+        delete creep.memory.disassemble;
+        return ERR_NOT_FOUND;
     }
 
 
     if (creep.store.getFreeCapacity() > 0) {
-        const result = exports.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_TERMINAL], resourceType);
-        if (result == ERR_NOT_FOUND) {
+        // minCount 1: забираем и хвост (300 батареек при 600 свободных) - раньше фильтр
+        // "store >= free" такой склад пропускал, и задача удалялась как "Not found".
+        const result = exports.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_TERMINAL], resourceType, 0, 1);
+        if (result == OK) return OK;
+        // В складах не осталось. Если что-то уже в трюме - сначала довозим в фабрику и
+        // только потом снимаем задачу, иначе хвост поехал бы обратно в storage fill-цепочкой.
+        if (!creep.store.getUsedCapacity(resourceType)) {
             console.log(`[${creep.room.name}] Not found resource ${resourceType} for disassemble by creep ${creep.name}. Task was deleted.`);
             delete creep.memory.disassemble;
             return ERR_NOT_FOUND;
         }
-    }else {
-        exports.fillTarget(creep, factory, resourceType);
     }
+    exports.fillTarget(creep, factory, resourceType);
     return OK;
 }
 
@@ -558,20 +635,29 @@ exports.transferResource = function(creep) {
 
     const {resource_type, source_id, target_id, max_resource_count_in_target, min_resource_count_in_source} = task;
 
-    // Выкидываем лишние ресурсы крипа.
+    // Выкидываем лишние ресурсы крипа (только лишние, см. disassembleResource).
     if (creep.store.getUsedCapacity() != creep.store.getUsedCapacity(resource_type)) {
         creep.say(`Remove extra resource`);
-        if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return OK;
-        if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
-        return OK;
+        const extraType = Object.keys(creep.store).find(r => r != resource_type);
+        if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE, 0, extraType) == OK) return OK;
+        if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL, 0, extraType) == OK) return OK;
+        // Выгрузить некуда (складов нет или оба физически полны) - см. disassembleResource:
+        // везём лишнее с собой (fillTarget/withdrawTarget ниже работают только с resource_type
+        // и остатком места); трюм целиком занят чужим грузом - stallWithForeignCargo.
+        // Раньше - return OK, чарджер стоял с задачей навсегда.
+        if (creep.store.getFreeCapacity() == 0 && !creep.store.getUsedCapacity(resource_type)) {
+            return stallWithForeignCargo(creep, `transfer ${resource_type}`);
+        }
     }
 
+    // Снятие задачи ниже возвращает ERR_NOT_FOUND, а не OK: чарджер свободен уже на этом тике
+    // (идёт в обычную цепочку), а не простаивает тик с пустышкой.
     const source = Game.getObjectById(source_id)
     const target = Game.getObjectById(target_id);
     if (!source || !target) {
         console.log(`[${creep.room.name}] Not found source or target for transfer resource ${resource_type} by creep ${creep.name}. Task was deleted.`);
         delete creep.memory.transfer;
-        return OK;
+        return ERR_NOT_FOUND;
     }
 
     // Target не принимает этот ресурс (getFreeCapacity === null, например лаба с
@@ -583,19 +669,21 @@ exports.transferResource = function(creep) {
     if (freeCap === null) {
         console.log(`[${creep.room.name}] ${target.structureType} ${target.id} rejects resource ${resource_type}. Task was deleted.`);
         delete creep.memory.transfer;
-        return OK;
+        return ERR_NOT_FOUND;
     }
 
     // Если некуда класть - выгружаем ресурсы и удаляем задачу.
     if (freeCap == 0) {
         if (creep.store.getUsedCapacity() != 0) {
             creep.say(`Remove extra resource`);
-            exports.fillClosestStructure(creep, STRUCTURE_TERMINAL);
-        } else {
-            console.log(`[${creep.room.name}] ${target.structureType} is overflowed for transfer resource ${resource_type}. Task was deleted.`);
-            delete creep.memory.transfer;
+            if (exports.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
+            if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return OK;
+            // Терминал и storage полны (или их нет) - раньше возвращали OK, задача с грузом
+            // висела навсегда. Снимаем задачу, груз разнесёт обычная fill-цепочка.
         }
-        return OK;
+        console.log(`[${creep.room.name}] ${target.structureType} is overflowed for transfer resource ${resource_type}. Task was deleted.`);
+        delete creep.memory.transfer;
+        return ERR_NOT_FOUND;
     }
 
     exports.chechHarvesting(creep);
@@ -607,7 +695,7 @@ exports.transferResource = function(creep) {
         if (max_resource_count_in_target && targetResourceCount > max_resource_count_in_target) {
             console.log(`[${creep.room.name}] Transfer of ${resource_type} using the creep ${creep.name} is completed - the target has ${targetResourceCount} resources.`);
             delete creep.memory.transfer;
-            return OK;
+            return ERR_NOT_FOUND;
         }
 
         const sourceResourceCount = source.store.getUsedCapacity(resource_type);
@@ -624,7 +712,7 @@ exports.transferResource = function(creep) {
         if (availableInSource <= 0) {
             console.log(`[${creep.room.name}] Transfer of ${resource_type} completed - source reserved minimum (${sourceResourceCount}/${min_resource_count_in_source}).`);
             delete creep.memory.transfer;
-            return OK;
+            return ERR_NOT_FOUND;
         }
 
         const creepCapacity = creep.store.getFreeCapacity();

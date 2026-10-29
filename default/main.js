@@ -68,6 +68,11 @@ try {
     if (settings.get(null, 'profiler_enabled')) profiler.enable();
 } catch (err) { err.log() }
 
+// Консольные команды (help() в консоли игры). Регистрируются на global при загрузке кода -
+// заново после каждого global reset; в loop не участвуют. try: ошибка в console.js не должна
+// ломать загрузку main.
+try { require('console'); } catch (err) { err.log() }
+
 
 // Цепочка спавна: порядок load-bearing, см. CLAUDE.md / spawnCreeps. Каждая функция
 // возвращает false ("я только что заспавнила, дальше не идём") или true ("мне ничего

@@ -297,6 +297,8 @@ function tryUpgradeController(creep) {
 
 
 module.exports = roleMiner;
+// Для console.status (порог "уходящего" майнера = minerReplacementTtl тела текущего конфига).
+module.exports.configurations = configurations;
 
 
 module.exports.spawn = profiler.registerFN(module.exports.spawn, "role.miner.spawn");

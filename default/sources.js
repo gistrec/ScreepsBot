@@ -109,3 +109,37 @@ exports.get = function(creep, force = false) {
     return source;
 }
 
+
+// Резервирование source'ов для самодобычи апгрейдера (roles/upgrader.js). Держат source те же
+// роли, что учитывает выбор выше: miner и remote_upgrader с memory.source_id. Семантика -
+// "source назначен", а не "сколько сейчас добывается": WORK по телу (body, не getActiveBodyparts),
+// без TTL, hits, miningPower и без разницы, в спавне крип или уже копает. Поэтому Game.creeps, а не
+// room.find(FIND_MY_CREEPS): замену в спавне движок в find не отдаёт (!spawning), а source_id ей
+// уже записан при spawnCreep (roles/miner.js). Кеш на тик - один проход по Game.creeps на всю игру.
+const RESERVING_ROLES = ['miner', 'remote_upgrader'];
+let reservedWork = {time: -1, bySource: {}};
+
+function reservedWorkBySource() {
+    if (reservedWork.time !== Game.time) {
+        const bySource = {};
+        for (const name in Game.creeps) {
+            const c = Game.creeps[name];
+            const sourceId = c.memory.source_id;
+            if (!sourceId || !RESERVING_ROLES.includes(c.memory.role)) continue;
+            bySource[sourceId] = (bySource[sourceId] || 0) + c.body.filter(p => p.type == WORK).length;
+        }
+        reservedWork = {time: Game.time, bySource};
+    }
+    return reservedWork.bySource;
+}
+
+/**
+ * Зарезервирован ли source: назначенные на него miner/remote_upgrader по телу выбирают регенерацию
+ * целиком (owned-комната: 3000 / 300 = 10 e/tick = 5 WORK). Bootstrap-миннеры 250e (1 WORK, не больше
+ * двух на source - miner.spawn) source не держат: на RCL 1 апгрейдеру энергию больше взять негде.
+ */
+exports.isReserved = function(source) {
+    const workToSaturate = source.energyCapacity / ENERGY_REGEN_TIME / HARVEST_POWER;
+    return (reservedWorkBySource()[source.id] || 0) >= workToSaturate;
+}
+

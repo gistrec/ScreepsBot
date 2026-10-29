@@ -213,7 +213,15 @@ exports.balanceEnergy = function() {
     const richRooms = [];
     const poorRooms = [];
 
-    for (const roomName in Game.rooms) {
+    // getTotalEnergy() за тик не меняется (store движок обновляет после тика) - кешируем на
+    // комнате: сортировка получателей у каждого донора берёт снимок из классификации и не зовёт
+    // getFactory() заново, т.е. получатель, прошедший классификацию, в сортировке не бросит.
+    const totalEnergy = room => room.cache('totalEnergy', r => r.getTotalEnergy());
+
+    // try/catch на комнату (здесь и в циклах ниже): исключение в одной комнате не должно
+    // отменять балансировку для всех следующих по порядку обхода Game.rooms - main.js ловит
+    // снаружи всего process(), и без try тик терялся целиком.
+    for (const roomName in Game.rooms) try {
         const room = Game.rooms[roomName];
         if (!room.controller || !room.controller.my) {
             continue
@@ -225,7 +233,7 @@ exports.balanceEnergy = function() {
         // Богатство для донор/получатель считаем с батарейками (их можно разжать/переслать),
         // а сжатие излишков (veryRich) - только по сырой энергии: батарейки повторно не сжать.
         const storedRaw = room.getStoredEnergy();
-        const stored = room.getTotalEnergy();
+        const stored = totalEnergy(room);
         const terminalEnergy = room.terminal.store.getUsedCapacity(RESOURCE_ENERGY);
         const terminalFree = room.terminal.store.getFreeCapacity();
 
@@ -240,12 +248,12 @@ exports.balanceEnergy = function() {
             console.log(`[EnergyBalance] Room ${roomName} need more energy [stored ${stored} / terminal ${terminalEnergy}]`)
             poorRooms.push(room);
         }
-    }
+    } catch (err) { err.log() }
 
     // Сжимаем излишки независимо от донорства.
-    for (const room of veryRichRooms) {
+    for (const room of veryRichRooms) try {
         compressEnergy(room);
-    }
+    } catch (err) { err.log() }
 
     // Поступления, запланированные в этом проходе, по комнатам-получателям. Store получателя
     // обновится только в следующем тике, поэтому без учёта все доноры выбирают одну и ту же
@@ -258,11 +266,11 @@ exports.balanceEnergy = function() {
         p.units  += units;
         p.energy += energy;
     };
-    const plannedTotalEnergy  = room => room.getTotalEnergy() + (planned[room.name] ? planned[room.name].energy : 0);
+    const plannedTotalEnergy  = room => totalEnergy(room) + (planned[room.name] ? planned[room.name].energy : 0);
     const plannedTerminalFree = room => room.terminal.store.getFreeCapacity() - (planned[room.name] ? planned[room.name].units : 0);
 
     // Шлём энергию из богатых комнат самым нуждающимся.
-    for (const richRoom of richRooms) {
+    for (const richRoom of richRooms) try {
         // Подкладываем батарейки в терминал, чтобы было чем дёшево делиться.
         stageBatteriesForExport(richRoom);
 
@@ -270,7 +278,11 @@ exports.balanceEnergy = function() {
         const sortedPoorRooms = poorRooms.slice().sort((a, b) => {
             return plannedTotalEnergy(a) - plannedTotalEnergy(b);
         });
-        for (const poorRoom of sortedPoorRooms) {
+        // try/catch на получателя: исключение на одном получателе (getFactory, send) не
+        // обрывает донора - он пробует следующего; иначе плохой получатель, беднейший в
+        // сортировке, обрывал бы каждого донора. Список "плохих" на проход не ведём: по
+        // исключению не отличить донора от получателя, и плохой донор вычеркнул бы всех.
+        for (const poorRoom of sortedPoorRooms) try {
             // Terminal has 10-tick cooldown after each send - only one send per rich room per tick.
             // cooldown - снимок начала тика: send из lab.transferResourcesBetweenRooms в этом же
             // тике (%300, lab идёт раньше в main.js) в нём не виден - его ловит intentSent
@@ -286,8 +298,10 @@ exports.balanceEnergy = function() {
             if (poorRoom.getFactory() && donorBatteries >= MIN_BATTERY_SEND) {
                 const amount = Math.min(donorBatteries, MAX_BATTERY_SEND);
                 if (richRoom.terminal.send(RESOURCE_BATTERY, amount, poorRoom.name) == OK) {
-                    console.log(`[EnergyBalance] Sent ${amount} batteries (~${amount * 10} energy) ${richRoom.name} -> ${poorRoom.name}`);
+                    // Учёт сразу после OK: интент уже стоит, и исключение в логе не должно
+                    // оставить поступление неучтённым (следующий донор выбрал бы ту же комнату).
                     planIncoming(poorRoom, amount, amount * 10);
+                    console.log(`[EnergyBalance] Sent ${amount} batteries (~${amount * 10} energy) ${richRoom.name} -> ${poorRoom.name}`);
                     break;
                 }
             }
@@ -307,12 +321,14 @@ exports.balanceEnergy = function() {
                 planIncoming(poorRoom, transferAmount, transferAmount);
                 break;
             }
-        }
-    }
+        } catch (err) { err.log() }
+    } catch (err) { err.log() }
 }
 
 exports.processFactory = function() {
-    for (const roomName in Game.rooms) {
+    // try/catch на комнату: иначе исключение в одной фабрике отменяет обработку остальных,
+    // а на тике %100 - и весь balanceEnergy (process() зовёт их подряд под одним try в main.js).
+    for (const roomName in Game.rooms) try {
         const room = Game.rooms[roomName];
         if (!room.controller || !room.controller.my || room.controller.level < 7) {
             continue
@@ -390,7 +406,7 @@ exports.processFactory = function() {
                 factory.produce(producedMineralType);
             }
         } while (false);
-    }
+    } catch (err) { err.log() }
 }
 
 

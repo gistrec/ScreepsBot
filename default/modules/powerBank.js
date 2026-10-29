@@ -229,7 +229,10 @@ function tryAllocateSquad(bank) {
     });
     if (!home) return false;
 
-    if (home.energyAvailable < bodyCost(ATTACKER_BODY)) return false;
+    if (home.energyAvailable < bodyCost(ATTACKER_BODY)) {
+        utils.recordModuleSpawnNeed(home, 'powerBankAttacker', bodyCost(ATTACKER_BODY));
+        return false;
+    }
 
     // Без T3 буста 20 ATTACK не успевают пробить банк - закупаем минералы (или ждём
     // пока market.deal/cooldown'ы разрешат докупить). Squad allocate откладываем.
@@ -288,7 +291,10 @@ function trySpawnHealer(bank) {
 
     const home = Game.rooms[bank.home_room];
     if (!home) return;
-    if (home.energyAvailable < bodyCost(HEALER_BODY)) return;
+    if (home.energyAvailable < bodyCost(HEALER_BODY)) {
+        utils.recordModuleSpawnNeed(home, 'powerBankHealer', bodyCost(HEALER_BODY));
+        return;
+    }
     if (!ensureBoostMinerals(home, [{body: HEALER_BODY, boosts: HEALER_BOOSTS}])) return;
 
     const spawn = utils.findFreeSpawn(home, {primaryOnly: false, requireActive: false});

@@ -164,9 +164,45 @@ exports.needsChargers = function(room) {
 // Помечаем "комната ждёт энергии для спавна роли X". Используется визуализацией для overlay
 // около контроллера, чтобы было видно что именно блокирует spawn-цепочку. main.js очищает
 // поле в начале каждого spawnCreeps цикла; роли вызывают это, когда возвращают false по
-// причине недостатка энергии.
+// причине недостатка энергии. Только для ролей spawn-цепочки (SPAWN_CHAIN в main.js).
 exports.recordSpawnNeed = function(room, role, needed) {
     room.memory.spawn_need = {role, needed, at: Game.time};
+}
+
+// То же для модулей вне spawn-цепочки (expansion, wallBreaker, powerBank). Отдельный слот
+// по роли: модули идут в loop раньше визуализации и цепочки - в общем слоте они перетирали
+// бы нужду цепочки (и друг друга), а spawnCreeps стирал их запись в том же тике.
+// Модуль пишет нужду, пока ждёт (минимум раз в 10 тиков); перестал - запись протухает.
+exports.recordModuleSpawnNeed = function(room, role, needed) {
+    const needs = room.memory.spawn_need_modules || (room.memory.spawn_need_modules = {});
+    needs[role] = {needed, at: Game.time};
+}
+
+// Нужда старше этого не показывается: живые записи обновляются минимум раз в 10 тиков
+// (спавн-цикл и модули идут на %10), запас x2.
+const SPAWN_NEED_TTL = exports.SPAWN_NEED_TTL = 20;
+
+// Чистка протухших нужд модулей (зовёт spawnCreeps раз в 10 тиков).
+exports.pruneModuleSpawnNeeds = function(mem) {
+    const needs = mem.spawn_need_modules;
+    if (!needs) return;
+    for (const role in needs) {
+        if (!(Game.time - needs[role].at <= SPAWN_NEED_TTL)) delete needs[role];
+    }
+    if (Object.keys(needs).length === 0) delete mem.spawn_need_modules;
+}
+
+// Актуальные нужды для показа: сначала цепочки, затем модулей; [{role, needed, at}].
+// Фильтр по возрасту на чтении - для комнат, где spawnCreeps не чистит (потеряна/не видна).
+exports.freshSpawnNeeds = function(mem) {
+    const out = [];
+    const sn = mem.spawn_need;
+    if (sn && sn.role && Game.time - sn.at <= SPAWN_NEED_TTL) out.push(sn);
+    const needs = mem.spawn_need_modules;
+    for (const role in needs) {
+        if (Game.time - needs[role].at <= SPAWN_NEED_TTL) out.push({role, needed: needs[role].needed, at: needs[role].at});
+    }
+    return out;
 }
 
 // Свободный спавн в комнате, готовый принять задачу spawnCreep.

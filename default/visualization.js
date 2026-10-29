@@ -22,8 +22,6 @@ const STRUCTURE_PREVIEW_LABEL = {
     [STRUCTURE_RAMPART]:     {ch: 'H', color: '#88ff88'},
 };
 
-let statuses = {}
-
 // Энерго-статистика по комнате: EWMA скорости накопления getTotalEnergy() (с battery×10)
 // за 3 окна. Аналог load-average в top: разные tau показывают краткосрочный/среднесрочный/
 // долгосрочный режим. Сэмплируем раз в 50 тиков чтобы getTotalEnergy() не молотился каждый
@@ -58,6 +56,57 @@ function updateEnergyEMA(room) {
     stats.prev = current;
     stats.prevTick = Game.time;
     stats.samples += 1;
+}
+
+// Скорость апгрейда контроллера (E/t около контроллера): EWMA прироста controller.progress.
+// Живёт в room.memory.upgrade_stats и сэмплируется вместе с energy-статистикой - переживает
+// global reset. Раньше был module-level statuses со средним "с момента reset'а": обнулялся
+// после каждого деплоя и заводился даже для чужих видимых комнат.
+const UPGRADE_RATE_TAU = 1500;   // ~1ч15м
+
+function updateUpgradeRate(room) {
+    const controller = room.controller;
+    // RCL 8: progress/progressTotal undefined - мерить нечего.
+    if (!controller.progressTotal) {
+        delete room.memory.upgrade_stats;
+        return;
+    }
+    const stats = room.memory.upgrade_stats;
+    // Нет базы или сменился уровень (на level-up progress прыгает к 0, дельта была бы
+    // отрицательной) - только новая база, накопленный rate сохраняем.
+    if (!stats || stats.level !== controller.level) {
+        room.memory.upgrade_stats = {
+            prev: controller.progress, prevTick: Game.time, level: controller.level,
+            rate: stats ? stats.rate : 0, samples: stats ? stats.samples : 0,
+        };
+        return;
+    }
+    const dt = Game.time - stats.prevTick;
+    if (dt <= 0) return;
+    const rate = (controller.progress - stats.prev) / dt;
+    if (stats.samples === 0) {
+        stats.rate = rate;
+    } else {
+        const alpha = 1 - Math.exp(-dt / UPGRADE_RATE_TAU);
+        stats.rate = alpha * rate + (1 - alpha) * stats.rate;
+    }
+    stats.prev = controller.progress;
+    stats.prevTick = Game.time;
+    stats.samples += 1;
+}
+
+// Сэмплы статистики своих комнат (energy EWMA, скорость апгрейда) отдельно от рендера:
+// process зовёт это ДО gate'ов viz_mode/bucket/username. Раньше сэмпл жил внутри visualiseRoom
+// и при выключенной визуализации статистика замирала, а первый сэмпл после включения
+// размазывал весь пропуск в одну дельту. Раз в ENERGY_SAMPLE_STEP тиков, остальные - return.
+function sampleRoomStats() {
+    if (Game.time % ENERGY_SAMPLE_STEP !== 0) return;
+    for (const roomName in Game.rooms) try {
+        const room = Game.rooms[roomName];
+        if (!room.controller || !room.controller.my) continue;
+        updateEnergyEMA(room);
+        updateUpgradeRate(room);
+    } catch (err) { err.log() }
 }
 
 function formatEnergyCompact(v) {
@@ -208,12 +257,24 @@ function drawMapArrow(from, to, opts, perpOffset = 0) {
 const HEAVY_VISUAL_TTL = 10;
 const heavyVisualCache = {};
 
+// Записи комнат, которые не рендерились дольше TTL (потеряли комнату, viz выключали), - вон:
+// иначе кеш копит строки до следующего global reset. Живые записи моложе TTL не трогаем
+// (запись старше TTL visualiseRoom всё равно пересоберёт).
+function pruneHeavyVisualCache() {
+    if (Game.time % 100 !== 0) return;
+    for (const name in heavyVisualCache) {
+        if (Game.time - heavyVisualCache[name].at >= HEAVY_VISUAL_TTL) delete heavyVisualCache[name];
+    }
+}
+
 function buildHeavyRoomVisuals(room) {
     const v = new RoomVisual(room.name);
 
     const my_towers = room.find(FIND_MY_STRUCTURES,  {filter: (s) => s.structureType == STRUCTURE_TOWER});
     for (const tower of my_towers) {
-        v.rect(tower.pos.x - 5, tower.pos.y - 5,  10, 10, { fill: 'transparent', stroke: 'red',   lineStyle: 'dotted', opacity: 0.2 })
+        // Зона полного урона (дистанция <= 5) - квадрат 11x11 клеток, tile-aligned (-0.5),
+        // как у вражеских башен ниже. Раньше 10x10 без offset - сдвиг на полклетки.
+        v.rect(tower.pos.x - 5.5, tower.pos.y - 5.5, 11, 11, { fill: 'transparent', stroke: 'red',   lineStyle: 'dotted', opacity: 0.2 })
          .text('600', tower.pos.x - 5, tower.pos.y + 5, { color: 'red', font: 0.5, opacity: 0.3 })
          .text('600', tower.pos.x + 5, tower.pos.y - 5, { color: 'red', font: 0.5, opacity: 0.3 });
     }
@@ -244,29 +305,27 @@ function buildHeavyRoomVisuals(room) {
     }
 
     const walls = room.find(FIND_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_RAMPART || s.structureType == STRUCTURE_WALL});
-    const hitsMax = RAMPART_HITS_MAX[room.controller.level];
+    // Максимум у рампарта зависит от RCL, у стены - фиксированный WALL_HITS_MAX.
+    const rampartHitsMax = RAMPART_HITS_MAX[room.controller.level];
     for (const wall of walls) {
+        const hitsMax = wall.structureType == STRUCTURE_WALL ? WALL_HITS_MAX : rampartHitsMax;
         v.text((wall.hits / hitsMax * 100).toFixed(1) + "%", wall.pos.x, wall.pos.y + 0.15, {color: 'red', font: 0.3, opacity: 1});
     }
 
     return v.export();
 }
 
-visualiseRoom = function(room) {
-    // Resetтим baseline progress'а при инициализации или после level-up: на level-up'е
-    // progress прыгает к 0 (новое значение progressTotal), и без reset'а progressDelta
-    // становится отрицательным (новый_малый - старый_большой) - E/t показывает минус.
-    if (room.controller) {
-        const s = statuses[room.name];
-        if (!s || s.level !== room.controller.level) {
-            statuses[room.name] = {
-                start: Game.time,
-                progress: room.controller.progress,
-                level: room.controller.level,
-            };
-        }
-    }
+// lab_status пишет lab.runReaction раз в 10 тиков, но не на всех путях: при врагах в комнате
+// (hasHostiles) и без лаб-кластера он выходит раньше updateLabStatus - статус замирает.
+// Старше LAB_STATUS_STALE тиков показываем серым с возрастом, а не как живой.
+const LAB_STATUS_STALE = 30;
+const LAB_STALE_COLOR = '#888888';
 
+function labStatusAge(ls) {
+    return Game.time - (ls.at || 0);
+}
+
+visualiseRoom = function(room) {
     const controller = room.controller;
 
     if (!controller || !controller.owner || controller.owner.username != "gistrec") {
@@ -287,9 +346,9 @@ visualiseRoom = function(room) {
 
     // На RCL 8 controller.progress и progressTotal undefined - даём дефолты, чтобы не было NaN.
     const isMaxLevel = !room.controller.progressTotal;
-    const elapsedTicks = Game.time - statuses[room.name].start;
-    const progressDelta = (room.controller.progress || 0) - (statuses[room.name].progress || 0);
-    const energyPerTick = elapsedTicks > 0 ? (progressDelta / elapsedTicks).toFixed(1) : "0";
+    // EWMA из sampleRoomStats; до первого сэмпла (и на RCL 8) - прочерк.
+    const us = room.memory.upgrade_stats;
+    const energyPerTick = (!isMaxLevel && us && us.samples > 0) ? us.rate.toFixed(1) : '—';
     const upgradeText = isMaxLevel
         ? "MAX (8)"
         : `${(room.controller.progress / room.controller.progressTotal * 100).toFixed(2)}%`;
@@ -306,7 +365,7 @@ visualiseRoom = function(room) {
     }
 
     // Строка про лабы. Обновляется в lab.runReaction раз в 10 тиков, поэтому слегка лагает -
-    // достаточно, чтобы понимать почему лабы стоят.
+    // достаточно, чтобы понимать почему лабы стоят. Устаревший статус - серым с возрастом.
     const ls = room.memory.lab_status;
     if (ls && ls.output && ls.total > 0) {
         let text, color;
@@ -326,24 +385,33 @@ visualiseRoom = function(room) {
             text  = `🧪 ${ls.output}: ${ls.runnable + ls.cooling}/${ls.total} active`;
             color = '#88ccff';
         }
+        const age = labStatusAge(ls);
+        if (age > LAB_STATUS_STALE) {
+            text += ` (stale ${age}t${room.hasHostiles ? ', hostiles' : ''})`;
+            color = LAB_STALE_COLOR;
+        }
         room.visual.text(text, pos.x + 1, pos.y + 4, {align: 'left', color});
     }
 
-    // Spawn need: какой role и сколько энергии не хватает. Заполняется ролями в spawn(),
-    // очищается в main.js спавн-цикле. Если нет блока - ничего не показываем.
-    const need = room.memory.spawn_need;
-    if (need && need.role) {
+    // Spawn need: какой role и сколько энергии не хватает. Первой - нужда spawn-цепочки
+    // (spawn_need, очищается в main.js спавн-цикле), за ней - нужды модулей (expansion,
+    // wallBreaker, powerBank; spawn_need_modules по роли) коротко. Записи старше
+    // SPAWN_NEED_TTL не показываем (см. utils.freshSpawnNeeds). Нет блока - ничего не рисуем.
+    const needs = utils.freshSpawnNeeds(room.memory);
+    if (needs.length > 0) {
+        const need = needs[0];
         const have = room.energyAvailable;
         const enough = have >= need.needed;
+        const more = needs.slice(1).map(n => `  +${n.role} ${n.needed}e`).join('');
         room.visual.text(
-            `⏳ Spawn ${need.role}: ${have}/${need.needed}e` + (enough ? ' (queued)' : ''),
+            `⏳ Spawn ${need.role}: ${have}/${need.needed}e` + (enough ? ' (queued)' : '') + more,
             pos.x + 1, pos.y + 5,
             {align: 'left', color: enough ? '#88ff88' : '#ffaa00'}
         );
     }
 
-    // Энерго-статистика: total stockpile + 3 окна EWMA скорости (e/tick).
-    updateEnergyEMA(room);
+    // Энерго-статистика: total stockpile + 3 окна EWMA скорости (e/tick). EWMA копит
+    // sampleRoomStats (вне рендера).
     const stats = room.memory.energy_stats;
     const totalE = room.getTotalEnergy();
     const parts = [`🔋 ${formatEnergyCompact(totalE)}`, 'net e/t'];
@@ -354,13 +422,6 @@ visualiseRoom = function(room) {
         }
     }
     room.visual.text(parts.join('  '), pos.x + 1, pos.y + 6, {align: 'left'});
-
-    const expand = Game.flags["Expand"]
-    if (expand) {
-        // 13x13 tile-aligned (-0.5 offset, size=13) - то же, что у base preview.
-        // Раньше было 12x12 без offset - off-by-half-tile и не покрывало правую/нижнюю клетку.
-        room.visual.rect(expand.pos.x - 6.5, expand.pos.y - 6.5, 13, 13, {fill: 'transparent', stroke: 'green', lineStyle: 'dotted', opacity: 0.7});
-    }
 
     // Нюки - редкие, но timeToLand тикает каждый тик. Дёшево.
     const nukes = room.find(FIND_NUKES);
@@ -409,8 +470,7 @@ visualiseMap = function(room) {
         .text(`⚡${room.energyAvailable}/${room.energyCapacityAvailable}`, new RoomPosition(0, 4, room.name), {align: 'left', fontSize: 6})
         .text(`🏰${room.controller.level} lvl - ${room.controller.progressTotal ? (room.controller.progress / room.controller.progressTotal * 100).toFixed(1) + "%" : "MAX"}`, new RoomPosition(0, 10, room.name), {align: 'left', fontSize: 6})
 
-    // Компактная энерго-статистика: total + 3 окна EWMA без лейблов.
-    // EMA уже посчитан в visualiseRoom (визуализация процессит rooms в порядке room->map).
+    // Компактная энерго-статистика: total + 3 окна EWMA без лейблов (копит sampleRoomStats).
     const stats = room.memory.energy_stats;
     // Δ = изменение запаса за тик (net e/t), знак +/- читается на самих числах.
     const energyParts = [`🔋${formatEnergyCompact(room.getTotalEnergy())}`, 'Δ'];
@@ -420,22 +480,6 @@ visualiseMap = function(room) {
         }
     }
     Game.map.visual.text(energyParts.join(' '), new RoomPosition(0, 16, room.name), {align: 'left', fontSize: 6});
-
-    // CPU EWMA - глобальная метрика, но рендерим в каждой нашей комнате (как energy stats).
-    // Формат: ⚙ <300t> <3kt> <30kt> b<bucket>. Bucket красный когда < 3000 - индикатор
-    // что бот проедает буфер.
-    const cpuStats = Memory.cpu_stats;
-    const cpuParts = ['⚙'];
-    if (cpuStats) {
-        for (let i = 0; i < CPU_WINDOWS.length; i++) {
-            cpuParts.push(cpuStats.samples >= CPU_WINDOWS[i].warmup ? formatCpu(cpuStats.ema[i]) : '—');
-        }
-    } else {
-        cpuParts.push('—', '—', '—');
-    }
-    cpuParts.push('b' + formatBucket(Game.cpu.bucket));
-    const cpuColor = Game.cpu.bucket < 3000 ? '#ff6666' : '#ffffff';
-    Game.map.visual.text(cpuParts.join(' '), new RoomPosition(0, 22, room.name), {align: 'left', fontSize: 6, color: cpuColor});
 
     // Богатая/бедная комната - та же метрика, что в resourceBalance (запас энергии).
     // Зелёный = богатая (делится), красный = бедная (нужна энергия), серый = норма.
@@ -459,6 +503,7 @@ visualiseMap = function(room) {
         else if (ls.stuck > 0) { labText = `${ls.output}: stuck`; labColor = '#ff5555'; }
         else if (ls.sourceLow) { labText = `${ls.output}: idle`;  labColor = '#ffff00'; }
         else                   { labText = `${ls.output}: proc`;  labColor = '#88ccff'; }
+        if (labStatusAge(ls) > LAB_STATUS_STALE) { labText = `${ls.output}: stale`; labColor = LAB_STALE_COLOR; }
         Game.map.visual.text(labText, new RoomPosition(0, 46, room.name), {color: labColor, align: 'left', fontSize: 6});
     }
 
@@ -472,6 +517,36 @@ visualiseMap = function(room) {
         const color = ready ? '#00FF00' : '#FF0000';
         Game.map.visual.text("☢", new RoomPosition(49, 46, room.name), {color, align: 'right', fontSize: 10});
     }
+}
+
+// CPU EWMA - глобальная метрика: одна строка на карте за тик, в комнате, которую выбрал
+// process (раньше дублировалась в каждой нашей комнате).
+// Формат: ⚙ <300t> <3kt> <30kt> b<bucket>. Bucket красный когда < 3000 - индикатор
+// что бот проедает буфер.
+function visualiseCpuMap(roomName) {
+    const cpuStats = Memory.cpu_stats;
+    const cpuParts = ['⚙'];
+    if (cpuStats) {
+        for (let i = 0; i < CPU_WINDOWS.length; i++) {
+            cpuParts.push(cpuStats.samples >= CPU_WINDOWS[i].warmup ? formatCpu(cpuStats.ema[i]) : '—');
+        }
+    } else {
+        cpuParts.push('—', '—', '—');
+    }
+    cpuParts.push('b' + formatBucket(Game.cpu.bucket));
+    const cpuColor = Game.cpu.bucket < 3000 ? '#ff6666' : '#ffffff';
+    Game.map.visual.text(cpuParts.join(' '), new RoomPosition(0, 22, roomName), {align: 'left', fontSize: 6, color: cpuColor});
+}
+
+// Флаг Expand: контур будущей базы 13x13 в комнате флага. RoomVisual по имени комнаты работает
+// и без видимости (цель экспансии обычно не наша и не видна). Раньше рисовалось внутри
+// visualiseRoom - в каждой нашей комнате по координатам флага.
+function visualiseExpandFlag() {
+    const expand = Game.flags['Expand'];
+    if (!expand) return;
+    // 13x13 tile-aligned (-0.5 offset, size=13) - то же, что у base preview.
+    new RoomVisual(expand.pos.roomName).rect(expand.pos.x - 6.5, expand.pos.y - 6.5, 13, 13,
+        {fill: 'transparent', stroke: 'green', lineStyle: 'dotted', opacity: 0.7});
 }
 
 // Рисует на карте потоки T1 минералов между лаб-комнатами по статической топологии
@@ -763,19 +838,29 @@ function visualisePowerBankRoomStats() {
 // дать обычной логике (defend/spawn) запас. Настройка viz_min_bucket (default 3000), 0 -
 // отключить gate (например при отладке).
 exports.process = function() {
+    // Обслуживание - до gate'ов: статистика копится и кеш чистится, даже когда визуализация
+    // выключена (viz_mode off, просадка bucket'а).
+    sampleRoomStats();
+    pruneHeavyVisualCache();
+
     // viz_mode 'off' - визуализация выключена целиком (консоль: viz('off')). min/full пока
     // рисуют одинаково - раздельные режимы приходят с переделкой панели (#20).
     if (settings.get(null, 'viz_mode') === 'off') return;
     const minBucket = settings.get(null, 'viz_min_bucket');
     if (Game.cpu.bucket < minBucket) return;
 
+    // CPU-строку рисуем один раз - в своей комнате с минимальным именем (стабильный выбор).
+    let cpuRoomName = null;
     for (const roomName in Game.rooms) {
         const room = Game.rooms[roomName];
 
         visualiseRoom(room);
         visualiseMap(room);
         visualiseRoomSurveyOverlay(room);
+        if (room.controller && room.controller.my && (cpuRoomName === null || roomName < cpuRoomName)) cpuRoomName = roomName;
     }
+    if (cpuRoomName) visualiseCpuMap(cpuRoomName);
+    visualiseExpandFlag();
     visualiseLabFlows();
     visualisePowerBankFlows();
     visualisePowerBankRoomStats();

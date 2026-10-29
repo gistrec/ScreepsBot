@@ -71,7 +71,7 @@ const roleRampartDefender = {
         }
 
         const boost_queue = ['XUH2O', 'XGHO2'];
-        const name = "Rd" + Game.time;
+        const name = utils.creepName('Rd', room);
         const role = 'rampart_defender'
         const energyStructures = utils.getEnergyStructures(room, spawn);
         const result = spawn.spawnCreep(creepConfiguration["parts"], name, { memory: { role, boost_queue }, energyStructures});

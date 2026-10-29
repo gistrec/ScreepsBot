@@ -111,7 +111,7 @@ const roleCharger = {
         const terminal_id = findStructureNearSpawn(anchor, STRUCTURE_TERMINAL);
 
         const role = 'charger';
-        const name = 'Charger' + Game.time;
+        const name = utils.creepName('Charger', room);
         const energyStructures = utils.getEnergyStructures(room, spawn);
         const result = spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, link_id, storage_id, factory_id, terminal_id}, energyStructures});
         if (result !== OK) {

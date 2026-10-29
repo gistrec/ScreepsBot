@@ -54,7 +54,21 @@ const roleUpgrader = {
             taskStructure.upgradeController(creep);
             return;
         }else {
-            taskResource.withdrawTarget(creep, Game.getObjectById(creep.memory.link_id));
+            // link_id задаётся руками из консоли (spawn его не пишет). Без него или с протухшим
+            // id withdraw(null) возвращал ERR_INVALID_TARGET каждый тик - крип с пустым трюмом
+            // стоял до смерти. Протухший id сбрасываем, без линка берём энергию из складов.
+            const link = creep.memory.link_id ? Game.getObjectById(creep.memory.link_id) : null;
+            if (creep.memory.link_id && !link) {
+                console.log(`[${creep.room.name}] ${creep.name} link ${creep.memory.link_id} is gone, withdrawing from storage`);
+                delete creep.memory.link_id;
+            }
+            if (link) {
+                taskResource.withdrawTarget(creep, link);
+                return;
+            }
+            if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE ], RESOURCE_ENERGY) == OK) return;
+            if (taskResource.withdrawClosestResources(creep, [STRUCTURE_TERMINAL], RESOURCE_ENERGY) == OK) return;
+            taskResource.withdrawClosestResources(creep, [STRUCTURE_CONTAINER], RESOURCE_ENERGY);
         }
 	}
 };

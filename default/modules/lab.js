@@ -306,6 +306,29 @@ function forceEvacuateLabs(room, expectedOutput) {
     }
 }
 
+// Target-лаба с "чужим" минералом (после boost-задачи или смены конфига): runReaction в неё
+// вернёт ERR_INVALID_ARGS (mineralType != продукт реакции), лаба простаивает - её нужно выгрузить.
+function isDirtyLab(lab, expectedOutput) {
+    return lab.mineralType && expectedOutput && lab.mineralType != expectedOutput;
+}
+
+// Выгрузка грязных target-лаб в terminal/storage. Одна transfer-задача за вызов
+// (чарджеров мало). Возвращает число поставленных задач (0/1).
+function evacuateDirtyLabs(room, expectedOutput, reservedLabs) {
+    for (const lab of exports.getLabConfig(room).targets) {
+        if (reservedLabs.has(lab.id)) continue;
+        if (!isDirtyLab(lab, expectedOutput)) continue;
+        const dump = (room.terminal && room.terminal.store.getFreeCapacity() > 0)
+            ? room.terminal
+            : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
+        if (!dump) return 0;
+        console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab.id} (expected ${expectedOutput})`);
+        room.transfer(lab.mineralType, lab.id, dump.id);
+        return 1;
+    }
+    return 0;
+}
+
 exports.runReaction = function(room) {
     if (room.hasHostiles) return;
 
@@ -328,6 +351,15 @@ exports.runReaction = function(room) {
         return;
     }
 
+    const reservedLabs = getBoostReservedLabIds();
+
+    // Только одна транспортная задача за вызов: charger'ов обычно мало,
+    // лишние назначения упадут с "No creep to transfer".
+    // "Чужой" минерал в target-лабе выгружаем ДО ранних выходов ниже: раньше при паузе
+    // пайплайна (downstream насыщен / source-лабы пусты) остаток буста лежал в лабе до
+    // возобновления реакций, а до него - только forceEvac через 500 тиков stuck.
+    let transfersQueued = evacuateDirtyLabs(room, expectedOutput, reservedLabs);
+
     // Все потребители produce-минерала забиты - смысла гонять реакцию нет.
     // Существующие лабы доедят cooldown, дальше runReaction сюда не зайдёт.
     if (expectedOutput && exports.isDownstreamSaturated(expectedOutput)) {
@@ -337,31 +369,13 @@ exports.runReaction = function(room) {
     if (source1.store.getUsedCapacity(source1.mineralType) < LAB_REACTION_AMOUNT) return;
     if (source2.store.getUsedCapacity(source2.mineralType) < LAB_REACTION_AMOUNT) return;
 
-    // Только одна транспортная задача за вызов: charger'ов обычно мало,
-    // лишние назначения упадут с "No creep to transfer".
-    let transfersQueued = 0;
-
-    const reservedLabs = getBoostReservedLabIds();
-
     let reactionsQueued = 0;
     for (const lab of cfg.targets) try {
         // Лаба занята активным буст-таском - не запускаем реакции и не дампим её содержимое,
         // иначе boost.js придётся постоянно перезаливать её через чарджера.
         if (reservedLabs.has(lab.id)) continue;
-        // Если в target-лабе оказался "чужой" минерал (после boost-задачи или смены конфига) -
-        // выгружаем его, иначе runReaction вернёт ERR_INVALID_TARGET и лаба простаивает.
-        if (lab.mineralType && expectedOutput && lab.mineralType != expectedOutput) {
-            if (transfersQueued > 0) continue;
-            const dump = (room.terminal && room.terminal.store.getFreeCapacity() > 0)
-                ? room.terminal
-                : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
-            if (dump) {
-                console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab.id} (expected ${expectedOutput})`);
-                room.transfer(lab.mineralType, lab.id, dump.id);
-                transfersQueued++;
-            }
-            continue;
-        }
+        // Грязная лаба (см. evacuateDirtyLabs) - реакцию в неё не запускаем.
+        if (isDirtyLab(lab, expectedOutput)) continue;
         if (lab.cooldown != 0) {
             continue;
         }

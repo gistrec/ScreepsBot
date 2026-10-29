@@ -235,3 +235,79 @@ exports.getEnergyStructures = function(room, spawn) {
         ...room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_SPAWN && s.name != spawn.name}),
     ];
 }
+
+// Недостижимые цели крипа. Target-хелперы (tasks/structure, tasks/resource) на ERR_NOT_IN_RANGE
+// звали moveTo и возвращали OK, не глядя на результат: цель за стенами/чужими рампартами или в
+// отрезанном кармане давала ERR_NO_PATH, хелпер - OK, и крип стоял у ближайшей к ней клетки до
+// смерти, не доходя до остальных задач цепочки. Просто вернуть ERR_NOT_FOUND мало: цель
+// выбирается заново каждый тик (findClosestByRange), та же цель снова ближайшая - и PathFinder
+// к ней каждый тик.
+// Правило как у goto (tasks/creep.js): один ERR_NO_PATH - не повод. Крипы для поиска пути -
+// препятствия, а moveTo в конце неполного пути отдаёт ERR_NO_PATH из кеша _move до конца
+// reusePath (у fill/withdraw - 15 тиков), даже когда проход уже свободен. Поэтому порог -
+// NO_PATH_LIMIT тиков подряд ERR_NO_PATH к одной цели (больше reusePath + 1). После него id
+// цели попадает в creep.memory.unreachable = {id: {u: до какого тика, k: который раз}}: хелперы
+// к ней не идут (ERR_NOT_FOUND без moveTo), выборки find* её пропускают, диспетчер transfer-задач
+// не отдаёт задачу с ней этому крипу. Срок растёт с каждым повтором (100, 200, 400, 800 тиков):
+// блокировка прохода дольше порога (ложное срабатывание) стоит крипу 100 тиков, а реально
+// обнесённая цель перепроверяется всё реже. Запись помнит k ещё UNREACHABLE_FORGET тиков после
+// срока, потом удаляется. Память ограничена: не больше UNREACHABLE_MAX записей (лишняя -
+// с самым ранним сроком), забытые удаляются при вставке и при обращении к своему id, всё
+// остальное - со смертью крипа (чистка Memory.creeps в main.js).
+const NO_PATH_LIMIT = 20;
+const UNREACHABLE_TICKS = 100;
+const UNREACHABLE_TICKS_MAX = 800;
+const UNREACHABLE_FORGET = 1000;
+const UNREACHABLE_MAX = 10;
+
+exports.isUnreachable = function(creep, id) {
+    const map = creep.memory.unreachable;
+    const entry = map && map[id];
+    if (!entry) return false;
+    if (entry.u > Game.time) return true;
+    if (entry.u + UNREACHABLE_FORGET <= Game.time) {
+        delete map[id];
+        if (Object.keys(map).length == 0) delete creep.memory.unreachable;
+    }
+    return false;
+}
+
+// moveTo к цели target-хелпера. OK - идём или ждём (временный ERR_NO_PATH, усталость и т.п. -
+// как раньше); тик, на котором цель попала в список, тоже OK: результат этого тика не
+// окончательный, и вызывающий не должен принимать его за "ресурса нет" (boost/disassemble
+// снимают задачу на ERR_NOT_FOUND), со следующего тика выборка возьмёт другую цель.
+// ERR_NO_PATH - цель уже в списке: хелпер возвращает ERR_NOT_FOUND, цепочка роли идёт дальше.
+exports.moveToTarget = function(creep, target, opts) {
+    if (exports.isUnreachable(creep, target.id)) return ERR_NO_PATH;
+
+    const status = creep.moveTo(target, opts);
+    let state = creep.memory.no_path;
+    if (status != ERR_NO_PATH) {
+        if (state && state.id == target.id) delete creep.memory.no_path;
+        return OK;
+    }
+
+    // Счёт подряд: другая цель или пропущенный тик - заново; повторный вызов в том же тике не считаем.
+    if (!state || state.id != target.id || state.t < Game.time - 1) {
+        state = creep.memory.no_path = {id: target.id, n: 0, t: 0};
+    }
+    if (state.t == Game.time) return OK;
+    state.n++;
+    state.t = Game.time;
+    if (state.n < NO_PATH_LIMIT) return OK;
+
+    delete creep.memory.no_path;
+    const map = creep.memory.unreachable = creep.memory.unreachable || {};
+    const k = map[target.id] ? map[target.id].k + 1 : 1;
+    delete map[target.id];
+    let oldest = null;
+    for (const id in map) {
+        if (map[id].u + UNREACHABLE_FORGET <= Game.time) delete map[id];
+        else if (oldest === null || map[id].u < map[oldest].u) oldest = id;
+    }
+    if (oldest !== null && Object.keys(map).length >= UNREACHABLE_MAX) delete map[oldest];
+    const ticks = Math.min(UNREACHABLE_TICKS * Math.pow(2, k - 1), UNREACHABLE_TICKS_MAX);
+    map[target.id] = {u: Game.time + ticks, k};
+    console.log(`[${creep.room.name}] ${creep.name} can't reach ${target.structureType || 'target'} ${target.id} (${NO_PATH_LIMIT}x ERR_NO_PATH), skipping it for ${ticks} ticks`);
+    return OK;
+}

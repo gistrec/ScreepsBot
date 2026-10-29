@@ -125,7 +125,7 @@ const roleMiner = {
         // целиком, но чем меньше энергии в гробнице - тем меньше дроп после её decay.
         if (creep.ticksToLive < 100 && creep.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
             const link = Game.structures[creep.memory.link_id];
-            if (link && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+            if (link && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0 && !utils.isUnreachable(creep, link.id)) {
                 taskResource.fillTarget(creep, link, RESOURCE_ENERGY);
                 return;
             }
@@ -154,8 +154,11 @@ const roleMiner = {
         // transfer даёт ERR_NOT_IN_RANGE, fillTarget уводит майнера к линку, следующий тик
         // moveTo(container) выше возвращает - осцилляция без единого харвеста. Без контейнера
         // майнер к клетке не привязан, дойти до линка допустимо (как и раньше).
+        // Недостижимый линк (utils.moveToTarget в fillTarget) - не годится: fillTarget к нему
+        // больше не идёт, а майнер с полным трюмом стоял бы на "return" ниже.
         const linkUsable = link && link.store.getFreeCapacity(RESOURCE_ENERGY) > 0
-            && (!container || creep.pos.isNearTo(link));
+            && (!container || creep.pos.isNearTo(link))
+            && !utils.isUnreachable(creep, link.id);
         const containerUsable = container && creep.pos.isEqualTo(container) && container.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
         const carryCap = creep.store.getCapacity(RESOURCE_ENERGY) || 0;
         const isFull = carryCap > 0 && creep.store.getFreeCapacity(RESOURCE_ENERGY) == 0;

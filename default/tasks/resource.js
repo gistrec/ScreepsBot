@@ -77,14 +77,15 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
             return ERR_NOT_FOUND;
 
         case ERR_NOT_IN_RANGE:
-            creep.moveTo(target, {
+            // Недостижимая цель (utils.moveToTarget) - "цели нет", цепочка идёт дальше.
+            if (utils.moveToTarget(creep, target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
                 // Цель стационарная (spawn/extension/tower/storage/etc), безопасно держать
                 // путь 15 тиков вместо дефолтных 5 - 3× меньше PathFinder.search вызовов.
                 reusePath: 15,
                 maxRooms: 1
-            });
+            }) != OK) return ERR_NOT_FOUND;
             return OK;
 
         default:
@@ -108,6 +109,7 @@ exports.fillClosestStructure = function(creep, structure, count = 0, resourceTyp
     const candidates = utils.getStructuresByType(creep.room)[structure] || [];
     const target = creep.pos.findClosestByRange(candidates, {
         filter: (s) => s.store && s.store.getFreeCapacity(RESOURCE_ENERGY) > count
+                    && !utils.isUnreachable(creep, s.id)
     });
     if (!target) return ERR_NOT_FOUND;
 
@@ -387,7 +389,8 @@ exports.pickupTarget = function(creep, target) {
             return OK;
 
         case ERR_NOT_IN_RANGE:
-            creep.moveTo(target, {
+            // Недостижимый дроп (utils.moveToTarget) - "цели нет", цепочка идёт дальше.
+            if (utils.moveToTarget(creep, target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
                 // Pickup-цель (dropped resource) decay'ится но не двигается. reusePath:5
@@ -395,7 +398,7 @@ exports.pickupTarget = function(creep, target) {
                 // приемлемо. Длиннее не делаем чтобы не идти к исчезнувшему дропу.
                 reusePath: 5,
                 maxRooms: 1,
-            });
+            }) != OK) return ERR_NOT_FOUND;
             return OK;
 
         default:
@@ -416,6 +419,7 @@ exports.pickupClosestResources = function(creep, types, full_cargo = false) {
     let target = creep.pos.findClosestByRange(FIND_DROPPED_RESOURCES, {
         filter: (resource) => types.includes(resource.resourceType) // Поднимаем заданные ресурсы
                            && (full_cargo ? resource.amount >= creep.store.getFreeCapacity() : true)
+                           && !utils.isUnreachable(creep, resource.id)
     });
     if (!target) return ERR_NOT_FOUND;
 
@@ -441,6 +445,10 @@ exports.harvestTarget = function(creep, target) {
         case ERR_NOT_ENOUGH_RESOURCES: // Нет ресурсов
             return OK;
 
+        // Без utils.moveToTarget: у всех вызывающих source/минерал закреплён (sources.get,
+        // mineral_id) или выбран findClosestByPath (уже с учётом пути) - другого не выберут,
+        // а частый ERR_NO_PATH здесь - временный (клетки у source заняты майнером/апгрейдерами):
+        // чёрный список остановил бы майнера/харвестера на UNREACHABLE_TICKS.
         case ERR_NOT_IN_RANGE:
             const result = creep.moveTo(target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
@@ -497,13 +505,14 @@ exports.withdrawTarget = function(creep, target, resourceType = RESOURCE_ENERGY,
             return ERR_NOT_FOUND;
 
         case ERR_NOT_IN_RANGE:
-            creep.moveTo(target, {
+            // Недостижимый склад (utils.moveToTarget) - "цели нет", цепочка идёт дальше.
+            if (utils.moveToTarget(creep, target, {
                 // costCallback: (roomName, costMatrix) => taskRoom.applyCostMatrixRewrites(roomName, costMatrix),
                 visualizePathStyle: { stroke: '#FFFF33' },
                 // Withdraw-цель стационарна (storage/terminal/container/link).
                 reusePath: 15,
                 maxRooms: 1,
-            });
+            }) != OK) return ERR_NOT_FOUND;
             return OK;
 
         default:
@@ -538,8 +547,14 @@ exports.withdrawClosestResources = function(creep, structures, resourceType = RE
     const candidates = structures.flatMap(t => byType[t] || []);
     const target = creep.pos.findClosestByRange(candidates, {
         filter: (s) => s.store && s.store.getUsedCapacity(resourceType) >= minCount
+                    && !utils.isUnreachable(creep, s.id)
     });
-    if (!target) return ERR_NOT_FOUND;
+    if (!target) {
+        // Склад с ресурсом есть, но в списке недостижимых (utils.moveToTarget) - это не "ресурса
+        // нет": boost/disassemble по ERR_NOT_FOUND снимают задачу, а срок в списке временный.
+        const blocked = candidates.some(s => s.store && s.store.getUsedCapacity(resourceType) >= minCount);
+        return blocked ? ERR_NO_PATH : ERR_NOT_FOUND;
+    }
 
     const amount = Math.min(resourceCount, target.store.getUsedCapacity(resourceType));
     return exports.withdrawTarget(creep, target, resourceType, amount);
@@ -559,6 +574,17 @@ function stallWithForeignCargo(creep, what) {
     }
     creep.say('🚧Stall');
     return OK;
+}
+
+
+// Склад/цель transfer-задачи недостижимы для этого крипа (utils.moveToTarget).
+// fillTarget/withdrawTarget к ним уже не идут, а задача держала бы чарджера на месте до
+// смерти. Снимаем: груз разнесёт fill-цепочка, диспетчер поставит задачу заново (тому же
+// крипу - не поставит, см. Room.transfer). disassemble ставится вручную - её не снимаем.
+function dropUnreachableTask(creep, key, object) {
+    console.log(`[${creep.room.name}] ${creep.name} can't reach ${object.structureType} ${object.id} for ${key} task. Task was deleted.`);
+    delete creep.memory[key];
+    return ERR_NOT_FOUND;
 }
 
 
@@ -594,6 +620,9 @@ exports.disassembleResource = function(creep) {
         delete creep.memory.disassemble;
         return ERR_NOT_FOUND;
     }
+    // Фабрика в списке недостижимых: задачу (ставится вручную, диспетчера нет) не снимаем -
+    // пропускаем тик, цепочка чарджера идёт дальше; после срока фабрика перепроверится.
+    if (utils.isUnreachable(creep, factory.id)) return ERR_NOT_FOUND;
     if (factory.store.getFreeCapacity() <= 5000) {
         if (creep.store.getUsedCapacity() != 0) {
             creep.say(`Remove battery`);
@@ -612,6 +641,9 @@ exports.disassembleResource = function(creep) {
         // "store >= free" такой склад пропускал, и задача удалялась как "Not found".
         const result = exports.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_TERMINAL], resourceType, 0, 1);
         if (result == OK) return OK;
+        // Ресурс есть только в недостижимых складах (ERR_NO_PATH) - ждём конца срока, не снимая
+        // задачу; с грузом в трюме - довозим его в фабрику (ниже).
+        if (result == ERR_NO_PATH && !creep.store.getUsedCapacity(resourceType)) return ERR_NOT_FOUND;
         // В складах не осталось. Если что-то уже в трюме - сначала довозим в фабрику и
         // только потом снимаем задачу, иначе хвост поехал бы обратно в storage fill-цепочкой.
         if (!creep.store.getUsedCapacity(resourceType)) {
@@ -659,6 +691,8 @@ exports.transferResource = function(creep) {
         delete creep.memory.transfer;
         return ERR_NOT_FOUND;
     }
+    if (utils.isUnreachable(creep, target_id)) return dropUnreachableTask(creep, 'transfer', target);
+    if (utils.isUnreachable(creep, source_id)) return dropUnreachableTask(creep, 'transfer', source);
 
     // Target не принимает этот ресурс (getFreeCapacity === null, например лаба с
     // mineralType=X получила задачу на Y) - удаляем задачу, иначе fillTarget будет

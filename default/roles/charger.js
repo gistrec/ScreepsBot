@@ -53,6 +53,9 @@ function terminalNeedsStorageEnergy(creep) {
     const terminal = creep.room.terminal;
     const storage  = creep.room.storage;
     if (!terminal || !storage) return false;
+    // Недостижимые (utils.moveToTarget) terminal или storage - доливки нет: иначе withdraw из
+    // storage не пройдёт, энергия возьмётся из терминала и вернётся в него же (пинг-понг).
+    if (utils.isUnreachable(creep, terminal.id) || utils.isUnreachable(creep, storage.id)) return false;
     return terminal.store.getUsedCapacity(RESOURCE_ENERGY) < terminalEnergyReserve(creep.room)
         && terminal.store.getFreeCapacity() - creep.store.getCapacity() >= RB_POOR_RECEIVE_FREE
         && storage.store.getUsedCapacity(RESOURCE_ENERGY) > 20000
@@ -192,8 +195,8 @@ const roleCharger = {
             // Основная задача: получить энергию для заполнения spawn/extension/etc.
             const link = Game.getObjectById(creep.memory.link_id)
 	        if (link && link.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
-	            taskResource.withdrawTarget(creep, link);
-	            return;
+	            // Недостижимый линк (utils.moveToTarget) - берём из складов ниже.
+	            if (taskResource.withdrawTarget(creep, link) == OK) return;
 	        }
 
             // Из складов (storage/terminal/factory) берём и остаток (minCount 1): после атаки в
@@ -218,11 +221,15 @@ const roleCharger = {
                 // Терминал ниже резерва - тоже спрос (storage -> terminal, см. terminalNeedsStorageEnergy).
                 const byType = utils.getMyStructuresByType(creep.room);
                 const psMinStored = creep.room.memory.power_spawn_min_stored_energy || 50000;
+                // Потребители из списка недостижимых (utils.moveToTarget) - не спрос: fill-цепочка
+                // их пропускает, и взятое из storage вернулось бы в storage (пинг-понг).
+                const reachable = (s) => !utils.isUnreachable(creep, s.id);
+                const ps = taskResource.powerSpawnNeedingEnergy(creep.room);
                 const realDemand =
-                       (byType[STRUCTURE_SPAWN]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
-                    || (byType[STRUCTURE_EXTENSION] || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0)
-                    || (byType[STRUCTURE_TOWER]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 350)
-                    || (!!taskResource.powerSpawnNeedingEnergy(creep.room) && creep.room.getTotalEnergy() >= psMinStored)
+                       (byType[STRUCTURE_SPAWN]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 && reachable(s))
+                    || (byType[STRUCTURE_EXTENSION] || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 0 && reachable(s))
+                    || (byType[STRUCTURE_TOWER]     || []).some(s => s.store.getFreeCapacity(RESOURCE_ENERGY) > 350 && reachable(s))
+                    || (!!ps && reachable(ps) && creep.room.getTotalEnergy() >= psMinStored)
                     || terminalNeedsStorageEnergy(creep);
                 if (realDemand) {
                     if (taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE],  RESOURCE_ENERGY, 0, ANY) == OK) return;

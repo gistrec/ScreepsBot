@@ -2,6 +2,7 @@ const lab = require('modules/lab');
 const buildModule = require('modules/build');
 const resourceBalance = require('modules/resourceBalance');
 const utils = require('utils');
+const settings = require('settings');
 
 // Однобуквенные коды структур из modules/build.js (см. const B/R/S/E/T/L/M/C/F/N/O/P/H).
 // Используем для overlay-превью базы по флагу.
@@ -706,12 +707,12 @@ function visualisePowerBankFlows() {
         line(ticksToKill !== null ? `kill  ~${ticksToKill}t` : `decay ${ticksToDecay}t`, {fontSize: 4});
         line(`${bank.status}${bank.contested ? ' ⚔' : ''}`,          {fontSize: 4});
 
-        // Config-блок: значения порогов из Memory + сравнение с фактическими параметрами банка.
+        // Config-блок: пороги из settings (те же, что в tryAllocateSquad) + сравнение с банком.
         // ✓/✗ + цвет показывают, прошёл бы банк allocate-фильтр в tryAllocateSquad.
-        const minAmount    = Memory.power_bank_min_amount         || 2000;
-        const minDecayBuf  = Memory.power_bank_min_decay_buffer   || 3000;
-        const maxDist      = Memory.power_bank_max_distance       || 4;
-        const stealMaxDist = Memory.power_bank_steal_max_distance || 3;
+        const minAmount    = settings.get(null, 'power_bank_min_amount');
+        const minDecayBuf  = settings.get(null, 'power_bank_min_decay_buffer');
+        const maxDist      = settings.get(null, 'power_bank_max_distance');
+        const stealMaxDist = settings.get(null, 'power_bank_steal_max_distance');
         const amountOk     = bank.amount >= minAmount;
         const decayOk      = ticksToDecay >= minDecayBuf;
         const failColor    = '#ff4444';
@@ -759,12 +760,10 @@ function visualisePowerBankRoomStats() {
 
 // При просадке буфера лучше не рендерить визуал чем уйти в principal-overrun.
 // Visualization это 1-3 CPU/тик чистой косметики - при <3000 bucket'е критичнее
-// дать обычной логике (defend/spawn) запас. Override через Memory.viz_min_bucket=0
-// чтобы отключить gate (например при отладке).
-const DEFAULT_VIZ_MIN_BUCKET = 3000;
-
+// дать обычной логике (defend/spawn) запас. Настройка viz_min_bucket (default 3000), 0 -
+// отключить gate (например при отладке).
 exports.process = function() {
-    const minBucket = Memory.viz_min_bucket !== undefined ? Memory.viz_min_bucket : DEFAULT_VIZ_MIN_BUCKET;
+    const minBucket = settings.get(null, 'viz_min_bucket');
     if (Game.cpu.bucket < minBucket) return;
 
     for (const roomName in Game.rooms) {

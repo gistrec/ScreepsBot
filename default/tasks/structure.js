@@ -1,5 +1,6 @@
 const taskRoom = require('./room');
 const utils = require('../utils');
+const settings = require('../settings');
 
 // Структуры, которые прямо сейчас чинит какой-либо крип комнаты (id из memory.repairing).
 // Per-tick Set на room.cache. Раньше был глобальный массив, из которого id уходил только
@@ -17,7 +18,7 @@ exports.charging_structures = [];
 // Башни чинят барьеры ниже порога 15k/100k (defend.fireTower, когда не заняты heal/attack),
 // апгрейдеры доводят до этой цели. На RCL 8 и в осаде потолка нет (hitsMax) - как и было.
 // Стены (STRUCTURE_WALL) сейчас никто не планирует к ремонту; ветка ниже - только чтобы
-// ручная цель-стена не чинилась до 300M. Переопределение: room.memory.rampart_target_hits.
+// ручная цель-стена не чинилась до 300M. Переопределение: настройка rampart_target_hits.
 const RAMPART_TARGET_HITS = {1: 0, 2: 10000, 3: 30000, 4: 100000, 5: 300000, 6: 1000000, 7: 3000000};
 
 exports.repairTargetHits = function(structure) {
@@ -28,9 +29,8 @@ exports.repairTargetHits = function(structure) {
     const level = room.controller ? room.controller.level : 0;
     if (room.isDefending || room.hasHostiles || level == 8) return structure.hitsMax;
 
-    const target = room.memory.rampart_target_hits !== undefined
-        ? room.memory.rampart_target_hits
-        : (RAMPART_TARGET_HITS[level] || 0);
+    const override = settings.get(room, 'rampart_target_hits');
+    const target = override !== null ? override : (RAMPART_TARGET_HITS[level] || 0);
     return Math.min(structure.hitsMax, target);
 }
 

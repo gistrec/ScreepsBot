@@ -1,6 +1,7 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const taskResource = require('../tasks/resource');
+const settings = require('../settings');
 
 // Модуль power-цикла. Phase 5+6 из плана:
 // - process(): каждый тик вызывает processPower() на power_spawn'ах с топливом.
@@ -13,7 +14,7 @@ exports.process = function() {
     for (const roomName in Game.rooms) {
         const room = Game.rooms[roomName];
         if (!room.controller || !room.controller.my) continue;
-        if (room.memory.power_disabled) continue;
+        if (settings.get(room, 'power_disabled')) continue;
 
         const powerSpawns = utils.getMyStructuresByType(room)[STRUCTURE_POWER_SPAWN] || [];
         const ps = powerSpawns[0];

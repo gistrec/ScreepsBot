@@ -6,10 +6,10 @@ const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
 
 const lab = require('../modules/lab');
+const settings = require('../settings');
 
 
 const MAX_EXTRACTORS_IN_ROOM = 1;
-const MAX_MINERALS_IN_ROOM = 150000;
 
 const roleExtractor = {
     spawn: function(room) {
@@ -28,7 +28,7 @@ const roleExtractor = {
         const mineralCountInStorage = (room.storage ? room.storage.store.getUsedCapacity(mineralType) : 0);
         const mineralcountInTerminal = (room.terminal ? room.terminal.store.getUsedCapacity(mineralType) : 0);
         const mineralCountInRoom = mineralCountInStorage + mineralcountInTerminal;
-        if (mineralCountInRoom > MAX_MINERALS_IN_ROOM) return true; // No need to spawn
+        if (mineralCountInRoom > settings.get(room, 'extractor_max_minerals')) return true; // No need to spawn
 
         // Не спавним, если все потребители этого минерала (импортёры через `require`
         // и локальные лабы по `resources`) уже забиты. Добытое некуда девать.

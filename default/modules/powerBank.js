@@ -1,6 +1,7 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const taskResource = require('../tasks/resource');
+const settings = require('../settings');
 
 // Squad-coordinator. State machine `Memory.power_banks[bankId].status`:
 //   'pending'   -> bank just discovered by observer; squad not yet sent
@@ -78,11 +79,11 @@ function ensureBoostMinerals(home, squad) {
 }
 
 exports.process = function() {
-    if (Memory.power_bank_disabled) return;
+    if (settings.get(null, 'power_bank_disabled')) return;
     if (!Memory.power_banks) return;
     if (Game.time % 10 !== 0) return;
 
-    const maxActive = Memory.power_bank_max_active || 1;
+    const maxActive = settings.get(null, 'power_bank_max_active');
     let activeCount = _.filter(Memory.power_banks,
         b => b.status === 'attacking' || b.status === 'looting'
     ).length;
@@ -188,12 +189,13 @@ function carriersCarrying(bank) {
 }
 exports.carriersCarrying = carriersCarrying;
 
-// Ручной override home-комнаты для конкретной target-room (через консоль:
-// `Memory.power_bank_home_for_room = { 'W10S40': 'W9S39' }`). Если задан, проверяем
+// Ручной override home-комнаты для конкретной target-room (настройка
+// power_bank_home_for_room = { 'W10S40': 'W9S39' }). Если задан, проверяем
 // тот же filter и route maxDistance что и для auto-pick - override не обходит базовые
 // требования (энергия/спавн/проходимость), иначе спавн фейлится каждый тик.
 function pickHome(bank, opts) {
-    const override = (Memory.power_bank_home_for_room || {})[bank.roomName];
+    const homeMap = settings.get(null, 'power_bank_home_for_room');
+    const override = homeMap ? homeMap[bank.roomName] : undefined;
     if (override) {
         const home = Game.rooms[override];
         if (!home || !home.controller || !home.controller.my) return null;
@@ -211,9 +213,9 @@ function pickHome(bank, opts) {
 // Возвращает true если сквад заспавнен в этом проходе - вызывающий инкрементит
 // activeCount для соблюдения power_bank_max_active при нескольких pending банках.
 function tryAllocateSquad(bank) {
-    const minAmount       = Memory.power_bank_min_amount       || 2000;
-    const maxDistance     = Memory.power_bank_max_distance     || 4;
-    const minDecayBuffer  = Memory.power_bank_min_decay_buffer || 3000;
+    const minAmount       = settings.get(null, 'power_bank_min_amount');
+    const maxDistance     = settings.get(null, 'power_bank_max_distance');
+    const minDecayBuffer  = settings.get(null, 'power_bank_min_decay_buffer');
 
     if (bank.amount < minAmount) return false;
     if (bank.decayAt - Game.time < minDecayBuffer) return false;
@@ -308,7 +310,7 @@ function trySpawnHealer(bank) {
 }
 
 function spawnCarriers(bank) {
-    const count = Memory.power_bank_carriers_per_kill || 3;
+    const count = settings.get(null, 'power_bank_carriers_per_kill');
     // Мёртвых (TTL, хостайлы) и фантомов (интент отброшен процессором, см. ниже) из списка
     // убираем: старый guard по длине списка считал их живыми и блокировал респавн до самого
     // decayAt, а запись держала слот power_bank_max_active. Доспавниваем до count живых;
@@ -353,7 +355,7 @@ function spawnCarriers(bank) {
 // только энергия на CARRIER_BODY и свободный спавн. Дистанция короче дефолтной
 // атаковой (3 vs 4) - carrier'ы без защиты, дальше слишком рискованно.
 function tryScheduleSteal(bank) {
-    const stealMaxDistance = Memory.power_bank_steal_max_distance || 3;
+    const stealMaxDistance = settings.get(null, 'power_bank_steal_max_distance');
     const home = pickHome(bank, {
         filter: r =>
             r.energyCapacityAvailable >= bodyCost(CARRIER_BODY)

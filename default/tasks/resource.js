@@ -1,5 +1,6 @@
 const taskRoom = require('./room');
 const utils = require('../utils');
+const settings = require('../settings');
 
 
 // Нужно ли прервать долгоживущую stateful-задачу (transfer, disassemble) - чтобы
@@ -118,15 +119,15 @@ exports.fillClosestStructure = function(creep, structure, count = 0, resourceTyp
 
 
 // Низкоприоритетная фоновая задача: закидываем nuker энергией/гудиумом, но только
-// когда комната "спокойна" - давно нет атаки, есть избыток ресурсов. Пороги переопределяются
-// через memory: nuker_fill_min_total_energy, nuker_fill_peace_ticks.
+// когда комната "спокойна" - давно нет атаки, есть избыток ресурсов. Пороги - настройки
+// nuker_fill_min_total_energy, nuker_fill_peace_ticks.
 exports.nukerFillSafe = function(room) {
     if (room.hasHostiles) return false;
 
-    const minEnergy = room.memory.nuker_fill_min_total_energy || 1_500_000;
+    const minEnergy = settings.get(room, 'nuker_fill_min_total_energy');
     if (room.getTotalEnergy() < minEnergy) return false;
 
-    const minPeace = room.memory.nuker_fill_peace_ticks || 5000;
+    const minPeace = settings.get(room, 'nuker_fill_peace_ticks');
     if (room.memory.last_attack_at && Game.time - room.memory.last_attack_at < minPeace) return false;
 
     return true;
@@ -147,10 +148,10 @@ exports.fillNukerIfCalm = function(creep) {
 // (или мы только что докупили достаточно). Возвращает false, если докупить не удалось -
 // caller должен повторить вызов на следующем проходе.
 //
-// Memory overrides:
-//   Memory.boost_buy_max_price[resourceType] - cap cr/u для конкретного минерала
-//   Memory.boost_buy_max_price_default       - cap cr/u по умолчанию (default 5000)
-//   Memory.boost_buy_min_credits             - min credit reserve (default 500_000)
+// Настройки (settings.js):
+//   boost_buy_max_price[resourceType] - cap cr/u для конкретного минерала (0 = не покупать)
+//   boost_buy_max_price_default       - cap cr/u по умолчанию (default 5000)
+//   boost_buy_min_credits             - min credit reserve (default 500_000)
 exports.buyMineralForBoost = function(room, resourceType, need) {
     if (!room.terminal) return false;
     if (need <= 0) return true;
@@ -170,9 +171,15 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
         return false;
     }
 
-    const priceMap = Memory.boost_buy_max_price || {};
-    const maxPrice = priceMap[resourceType] || Memory.boost_buy_max_price_default || 5000;
-    const minCredits = Memory.boost_buy_min_credits || 500000;
+    const priceMap = settings.get(null, 'boost_buy_max_price');
+    const perResource = priceMap ? priceMap[resourceType] : undefined;
+    // get() проверяет элементы карты; typeof - отсутствующий минерал = "не задано".
+    const maxPrice = typeof perResource === 'number'
+        ? perResource : settings.get(null, 'boost_buy_max_price_default');
+    const minCredits = settings.get(null, 'boost_buy_min_credits');
+    // 0 = не покупать (осознанная настройка): молча, без дорогого getAllOrders() + sort и без
+    // лога - зовётся каждые 10 тиков на pending банк и минерал.
+    if (maxPrice <= 0) return false;
 
     const sellOrders = Game.market.getAllOrders({type: ORDER_SELL, resourceType})
         .filter(o => o.amount > 0 && o.roomName && o.price <= maxPrice)
@@ -216,10 +223,10 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
 // Цена = min(max_price, cheapest_sell - 1), чтобы быть top-bid'ом и не переплачивать
 // весь спред. Платим 5% fee на сумму ордера, продавец платит transaction cost.
 //
-// Memory overrides:
-//   room.memory.nuker_buy_max_price      - потолок cr/unit, default 400 (0 = выключить)
-//   room.memory.nuker_buy_target_amount  - целевой запас G в комнате, default 5000
-//   Memory.nuker_buy_min_credits         - global floor по кредитам (с учётом fee), default 100k
+// Настройки (settings.js):
+//   nuker_buy_max_price      (room)   - потолок cr/unit, default 400 (0 = выключить)
+//   nuker_buy_target_amount  (room)   - целевой запас G в комнате, default 5000
+//   nuker_buy_min_credits    (global) - floor по кредитам (с учётом fee), default 100k
 //
 // Если ордер уже висит для этой комнаты+ресурса - повторно не создаём. Когда G насыщен
 // (have >= target), активный ордер отменяем чтобы не висел и не съел fee при росте цены.
@@ -230,11 +237,11 @@ exports.buyNukerGhodium = function(room) {
     if (!room.terminal) return;
     if (room.isDefending) return;
 
-    const maxPrice = (room.memory.nuker_buy_max_price !== undefined) ? room.memory.nuker_buy_max_price : 400;
+    const maxPrice = settings.get(room, 'nuker_buy_max_price');
     if (maxPrice <= 0) return;
 
-    const targetAmount = room.memory.nuker_buy_target_amount || 5000;
-    const minCredits   = Memory.nuker_buy_min_credits || 100000;
+    const targetAmount = settings.get(room, 'nuker_buy_target_amount');
+    const minCredits   = settings.get(null, 'nuker_buy_min_credits');
 
     const have = room.terminal.store.getUsedCapacity(RESOURCE_GHODIUM)
               + (room.storage ? room.storage.store.getUsedCapacity(RESOURCE_GHODIUM) : 0)
@@ -319,12 +326,12 @@ exports.scheduleNukerGhodium = function(room) {
 // Аналог scheduleNukerGhodium, но для RESOURCE_POWER. Throttle в main.js / modules/power.js.
 exports.schedulePowerSpawnPower = function(room) {
     if (room.isUnderAttack) return;
-    if (room.memory.power_disabled) return;
+    if (settings.get(room, 'power_disabled')) return;
 
     const ps = (utils.getMyStructuresByType(room)[STRUCTURE_POWER_SPAWN] || [])[0];
     if (!ps) return;
 
-    const minPower = room.memory.power_spawn_min_power || 50;
+    const minPower = settings.get(room, 'power_spawn_min_power');
     if (ps.store.getUsedCapacity(RESOURCE_POWER) >= minPower) return;
     if (ps.store.getFreeCapacity(RESOURCE_POWER) <= 0) return;
 
@@ -353,7 +360,7 @@ exports.schedulePowerSpawnPower = function(room) {
 // (schedulePowerSpawnPower), энергия просто осядет. Под атакой не льём совсем (как и power -
 // schedulePowerSpawnPower): энергия из защищённых складов нужна башням, а не GPL.
 exports.powerSpawnNeedingEnergy = function(room) {
-    if (room.memory.power_disabled) return null;
+    if (settings.get(room, 'power_disabled')) return null;
     if (room.isUnderAttack) return null;
     const ps = (utils.getMyStructuresByType(room)[STRUCTURE_POWER_SPAWN] || [])[0];
     if (!ps) return null;

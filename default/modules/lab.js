@@ -1,5 +1,6 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
+const settings = require('../settings');
 
 
 // Семантический конфиг лабы: пара входных минералов на комнату. Реакция выводится
@@ -178,8 +179,7 @@ exports.planPipeline = function(target) {
 
 // Через сколько тиков непрерывного stuck-состояния включаем force-evac (выгрузку лаб
 // несмотря на soft cap'ы). Запоздание защищает от мини-флаппинга когда storage чуть
-// освобождается и тут же снова забивается. Override per-room через memory.
-const DEFAULT_LAB_STUCK_EVAC_DELAY = 500;
+// освобождается и тут же снова забивается. Настройка lab_stuck_evac_delay (default 500).
 
 // Лабы, занятые активным boost-таском (creep.memory.lab_id) - lab.js должен пропускать их
 // в runReaction/forceEvacuateLabs, иначе runReaction дампит boost-минерал сразу после
@@ -266,7 +266,7 @@ function updateLabStatus(room, expectedOutput, source1, source2) {
         delete room.memory.lab_stuck_since;
     }
 
-    const evacDelay = room.memory.lab_stuck_evac_delay || DEFAULT_LAB_STUCK_EVAC_DELAY;
+    const evacDelay = settings.get(room, 'lab_stuck_evac_delay');
     const stuckDuration = room.memory.lab_stuck_since ? Game.time - room.memory.lab_stuck_since : 0;
     const forceEvac = stuckDuration >= evacDelay;
 

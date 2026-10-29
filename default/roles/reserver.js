@@ -1,12 +1,13 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
+const settings = require('../settings');
 
 
 // Reserver - удалённый резервер контроллеров. Едет в target_room, кастует
 // reserveController, продлевая reservation. На зарезервированной комнате source
 // даёт полные 3000 энергии за регенерацию (vs 1500 на нейтральной).
 //
-// Конфиг: Memory.remote_rooms[home_room] = ["W10S38", "W11S38", ...].
+// Конфиг: настройка remote_rooms комнаты home_room = ["W10S38", "W11S38", ...].
 // На каждый target_room спавнится один reserver.
 //
 // Body: 2 CLAIM + 2 MOVE = 1300 energy. CLAIM добавляет 1 тик к reservation.ticksToEnd
@@ -20,7 +21,7 @@ const BODY_COST = 1300;
 
 const roleReserver = {
     spawn: function(room) {
-        const targets = (Memory.remote_rooms && Memory.remote_rooms[room.name]) || [];
+        const targets = settings.get(room, 'remote_rooms') || [];
         if (targets.length === 0) return true;
 
         const spawn = utils.findFreeSpawn(room);

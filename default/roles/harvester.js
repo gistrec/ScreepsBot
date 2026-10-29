@@ -4,6 +4,7 @@ const utils        = require('utils');
 const taskCreep     = require('../tasks/creep');
 const taskStructure = require('../tasks/structure');
 const taskResource = require('../tasks/resource');
+const settings = require('../settings');
 
 
 const MAX_PER_GAME = 6;
@@ -49,7 +50,7 @@ function getEntryPositions(home_room, target_room) {
 // Маршрут хранится в creep.memory: home_room, target_room и точки въезда home_entry/target_entry
 // (RoomPosition-сериализация вида {x,y,roomName}). Значения проставляются при спавне.
 //
-// Авто-спавн через Memory.remote_rooms[home_room] = [target_room1, ...].
+// Авто-спавн через настройку remote_rooms комнаты home_room = [target_room1, ...].
 // Также можно спавнить вручную: roleHarvester.spawn(spawn, {home_room, target_room, home_entry, target_entry}).
 
 const roleHarvester = {
@@ -77,10 +78,10 @@ const roleHarvester = {
         return true;
     },
 
-    // Авто-спавн под Memory.remote_rooms[home_room]. Паттерн сцеплённого spawnCreeps:
+    // Авто-спавн под настройку remote_rooms. Паттерн сцеплённого spawnCreeps:
     // true = "ничего делать не нужно или другие могут пробовать", false = "только что заспавнили".
     autoSpawn: function(room) {
-        const targets = (Memory.remote_rooms && Memory.remote_rooms[room.name]) || [];
+        const targets = settings.get(room, 'remote_rooms') || [];
         if (targets.length === 0) return true;
 
         const spawn = utils.findFreeSpawn(room);

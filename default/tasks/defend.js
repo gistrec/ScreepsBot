@@ -1,4 +1,5 @@
 const utils = require('../utils');
+const settings = require('../settings');
 
 // Максимальный drop hits одной структуры с прошлой проверки. Снимок hits per-id живёт в
 // room.memory[memKey]; починка (drop < 0) игнорируется. Структура, исчезнувшая из списка
@@ -34,7 +35,7 @@ let safeModeActivatedAt = -1;
 // safe mode и весь cooldown - с console.log + Game.notify (= письмо) на каждом тике.
 function canActivateSafeMode(room) {
     const controller = room.controller;
-    if (room.memory.disable_safe_mode) return false;
+    if (settings.get(room, 'disable_safe_mode')) return false;
     if (safeModeActivatedAt == Game.time) return false;
     if (controller.safeMode || controller.safeModeCooldown || !controller.safeModeAvailable) return false;
     if (controller.upgradeBlocked) return false;

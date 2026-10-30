@@ -2,6 +2,7 @@ const utils = require('../utils')
 
 const taskCreep = require('../tasks/creep')
 const taskBoost = require('../tasks/boost')
+const log = require('../log');
 
 const MAX_PER_ROOM = 0;
 
@@ -13,7 +14,7 @@ const roleWarrior = {
         const warriors = utils.allCreepsByRole('warrior');
         if(warriors.length <= MAX_PER_ROOM) {
             const name = 'Warrior' + Game.time;
-            console.log(`[warrior] Spawning new warrior: ${name}`);
+            log.info('spawn:warrior', `[warrior] Spawning new warrior: ${name}`);
             Game.spawns[''].spawnCreep([TOUGH, TOUGH, TOUGH, TOUGH, TOUGH, TOUGH, TOUGH, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE, ATTACK, ATTACK], name, {
                 memory: {
                     role: 'warrior',

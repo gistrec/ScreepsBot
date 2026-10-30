@@ -1,6 +1,7 @@
 const taskRoom = require('./room');
 const utils = require('../utils');
 const settings = require('../settings');
+const log = require('../log');
 
 // Структуры, которые прямо сейчас чинит какой-либо крип комнаты (id из memory.repairing).
 // Per-tick Set на room.cache. Раньше был глобальный массив, из которого id уходил только
@@ -65,7 +66,7 @@ exports.buildTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][buildTarget] ${creep.name} error ${status} ${status.toStringStatus()}`)
+            log.error(`buildTarget:${creep.room.name}:${status}`, `[${creep.room.name}][buildTarget] ${creep.name} error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -122,7 +123,7 @@ exports.repairTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][repairTarget] ${creep.name} error ${status} ${status.toStringStatus()}`)
+            log.error(`repairTarget:${creep.room.name}:${status}`, `[${creep.room.name}][repairTarget] ${creep.name} error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -188,7 +189,7 @@ exports.dismantleTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][dismantleTarget] ${creep.name} error ${status} ${status.toStringStatus()}`)
+            log.error(`dismantleTarget:${creep.room.name}:${status}`, `[${creep.room.name}][dismantleTarget] ${creep.name} error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -231,7 +232,7 @@ exports.upgradeController = function(creep, controller = creep.room.controller) 
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][upgradeController] ${creep.name} error ${status} ${status.toStringStatus()}`)
+            log.error(`upgradeController:${creep.room.name}:${status}`, `[${creep.room.name}][upgradeController] ${creep.name} error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }

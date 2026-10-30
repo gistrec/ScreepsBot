@@ -1,5 +1,6 @@
 const profiler = require('../screeps-profiler');
 const settings = require('../settings');
+const log = require('../log');
 
 
 // Maintain a permanent battery buffer in the factory so decompression can start
@@ -246,10 +247,10 @@ exports.balanceEnergy = function() {
         }
 
         if (stored > RICH_STORED_ENERGY && terminalEnergy > TERMINAL_DONATE_ENERGY) {
-            console.log(`[EnergyBalance] Room ${roomName} can share energy [stored ${stored} / terminal ${terminalEnergy}]`)
+            log.debug(`balance:rich:${roomName}`, `[EnergyBalance] Room ${roomName} can share energy [stored ${stored} / terminal ${terminalEnergy}]`)
             richRooms.push(room);
         } else if (stored < POOR_STORED_ENERGY && terminalFree > TERMINAL_RECEIVE_FREE) {
-            console.log(`[EnergyBalance] Room ${roomName} need more energy [stored ${stored} / terminal ${terminalEnergy}]`)
+            log.debug(`balance:poor:${roomName}`, `[EnergyBalance] Room ${roomName} need more energy [stored ${stored} / terminal ${terminalEnergy}]`)
             poorRooms.push(room);
         }
     } catch (err) { err.log() }
@@ -305,7 +306,7 @@ exports.balanceEnergy = function() {
                     // Учёт сразу после OK: интент уже стоит, и исключение в логе не должно
                     // оставить поступление неучтённым (следующий донор выбрал бы ту же комнату).
                     planIncoming(poorRoom, amount, amount * 10);
-                    console.log(`[EnergyBalance] Sent ${amount} batteries (~${amount * 10} energy) ${richRoom.name} -> ${poorRoom.name}`);
+                    log.info(`balance:sent:${richRoom.name}`, `[EnergyBalance] Sent ${amount} batteries (~${amount * 10} energy) ${richRoom.name} -> ${poorRoom.name}`);
                     break;
                 }
             }

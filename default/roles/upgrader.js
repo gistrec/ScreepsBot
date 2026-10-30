@@ -6,6 +6,7 @@ const sources = require('../sources');
 const taskCreep     = require('../tasks/creep');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
+const log = require('../log');
 
 
 const configurations = [
@@ -36,7 +37,7 @@ const roleUpgrader = {
                 creep.memory.repairing = wall.id;
             }
         }
-        console.log(`[${room.name}][Upgrader] Rebalancing upgraders`);
+        log.info(`rebalance:${room.name}:upgrader`, `[${room.name}][Upgrader] Rebalancing upgraders`);
 
     },
     spawn: function(room) {
@@ -56,7 +57,7 @@ const roleUpgrader = {
         if (upgraders.length >= maxCount) return true;
 
         if (creepConfiguration.energy > room.energyAvailable) {
-            console.log(`[${room.name}] Need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+            log.info(`spawn-energy:${room.name}:upgrader`, `[${room.name}] Need Upgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
             utils.recordSpawnNeed(room, 'upgrader', creepConfiguration.energy);
             return false;
         }
@@ -67,11 +68,11 @@ const roleUpgrader = {
         const energyStructures = utils.getEnergyStructures(room, spawn);
         const result = spawn.spawnCreep(creepConfiguration.parts, name, {memory: {role, boost}, energyStructures});
         if (result !== OK) {
-            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`spawn-fail:${room.name}:${role}:${result}`, `[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
             // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
             return !utils.isTransientSpawnError(result);
         }
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
         return false;
     },
     upgrade: function(room) {
@@ -89,7 +90,7 @@ const roleUpgrader = {
         // давал ERR_INVALID_TARGET каждый тик, и апгрейдер с пустым трюмом стоял до смерти:
         // ни в склад за энергией, ни к контроллеру. Сбрасываем - дальше обычный апгрейдер.
         if (creep.memory.link_id && !Game.getObjectById(creep.memory.link_id)) {
-            console.log(`[${creep.room.name}] ${creep.name} link ${creep.memory.link_id} is gone, falling back to regular upgrader`);
+            log.info(`upgrader:link-gone:${creep.room.name}`, `[${creep.room.name}] ${creep.name} link ${creep.memory.link_id} is gone, falling back to regular upgrader`);
             delete creep.memory.link_id;
         }
 

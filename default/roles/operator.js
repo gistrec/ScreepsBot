@@ -1,4 +1,5 @@
 const utils = require('../utils');
+const log = require('../log');
 
 // PowerCreep operator. Стоит у power_spawn, генерирует ops каждые 50 тиков (PWR_GENERATE_OPS).
 // При накоплении достаточного количества - дропает в storage/terminal.
@@ -29,7 +30,7 @@ const roleOperator = {
             if (pc.pos.isNearTo(ps)) {
                 const r = pc.renew(ps);
                 if (r !== OK && Game.time % 100 === 0) {
-                    console.log(`[${room.name}][operator] renew err ${r} ${r.toStringStatus()}`);
+                    log.error(`operator:renew:${room.name}:${r}`, `[${room.name}][operator] renew err ${r} ${r.toStringStatus()}`);
                 }
             } else {
                 pc.moveTo(ps, moveOpts);
@@ -56,7 +57,7 @@ const roleOperator = {
          && pc.store.getFreeCapacity(RESOURCE_OPS) >= POWER_INFO[PWR_GENERATE_OPS].effect[op.level - 1]) {
             const r = pc.usePower(PWR_GENERATE_OPS);
             if (r !== OK && r !== ERR_TIRED) {
-                console.log(`[${room.name}][operator] usePower(GENERATE_OPS) err ${r} ${r.toStringStatus()}`);
+                log.error(`operator:ops:${room.name}:${r}`, `[${room.name}][operator] usePower(GENERATE_OPS) err ${r} ${r.toStringStatus()}`);
             }
         }
 

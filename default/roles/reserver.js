@@ -1,6 +1,7 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const settings = require('../settings');
+const log = require('../log');
 
 
 // Reserver - удалённый резервер контроллеров. Едет в target_room, кастует
@@ -33,7 +34,7 @@ const roleReserver = {
             if (existing) continue;
 
             if (room.energyAvailable < BODY_COST) {
-                console.log(`[${room.name}] Need reserver for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
+                log.info(`spawn-energy:${room.name}:reserver`, `[${room.name}] Need reserver for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
                 utils.recordSpawnNeed(room, 'reserver', BODY_COST);
                 return false;
             }
@@ -43,7 +44,7 @@ const roleReserver = {
                 memory: {role: 'reserver', home_room: room.name, target_room}
             });
             if (result === OK) {
-                console.log(`[${room.name}] Spawning reserver ${name} for ${target_room}`);
+                log.info(`spawn:${room.name}:reserver`, `[${room.name}] Spawning reserver ${name} for ${target_room}`);
                 return false;
             }
         }
@@ -63,7 +64,7 @@ const roleReserver = {
         if (creep.room.name != target) {
             const exitDir = creep.room.findExitTo(target);
             if (exitDir < 0) {
-                console.log(`[${creep.name}] No path to ${target} (err ${exitDir})`);
+                log.warn(`reserver:no-path:${target}`, `[${creep.name}] No path to ${target} (err ${exitDir})`);
                 return;
             }
             const exitPos = creep.pos.findClosestByRange(exitDir);

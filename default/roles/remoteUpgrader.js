@@ -3,6 +3,7 @@ const utils = require('../utils');
 const sources      = require('../sources');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
+const log = require('../log');
 
 
 const configurations = [
@@ -52,13 +53,13 @@ const roleRemoteUpgrader = {
 
         const room = findSpawnRoom(expand.pos.roomName);
         if (!room) {
-            console.log(`[EXPANSION] No own room with energyCapacity >= ${configurations[0].energy} for remote_upgrader`);
+            log.warn('expansion:no-ru-room', `[EXPANSION] No own room with energyCapacity >= ${configurations[0].energy} for remote_upgrader`);
             return true;
         }
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Need RemoteUpgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            log.info(`spawn-energy:${room.name}:remote_upgrader`, `[${room.name}] Need RemoteUpgrader, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             utils.recordModuleSpawnNeed(room, 'remote_upgrader', creepConfiguration["energy"]);
             return false;
         }
@@ -75,9 +76,9 @@ const roleRemoteUpgrader = {
         // Результат только логируем: expansion.process возвращаемые значения ролей не читает.
         const result = spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, target_room }});
         if (result === OK) {
-            console.log(`[${room.name}] Spawning new ${role} ${name}`);
+            log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
         } else {
-            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`spawn-fail:${room.name}:${role}:${result}`, `[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
         }
 
         return false;
@@ -123,8 +124,8 @@ const roleRemoteUpgrader = {
             if (spawns.length > 0) {
                 Memory.expansion.status = STATUS_IDLE;
 
-                console.log(`[${creep.room.name}][EXPANSION] Claiming finished. Spawn was built`);
-                console.log(`[${creep.room.name}][EXPANSION] Flag Expand was deleted`);
+                log.info('expansion:done', `[${creep.room.name}][EXPANSION] Claiming finished. Spawn was built`);
+                log.info('expansion:flag-removed', `[${creep.room.name}][EXPANSION] Flag Expand was deleted`);
                 expand.remove();
                 // Не return - продолжаем работать (harvest/fill spawn) на этом же тике.
             }

@@ -8,7 +8,8 @@
 // Правила для команд:
 //  - Возвращают строку: консоль Screeps печатает результат выражения. console.log не спамим;
 //    хелперы, которые сами пишут в лог (room.transfer, findBestAnchor, planPipeline), зовём
-//    через captureLog - их вывод уходит в возвращаемый текст.
+//    через captureLog - их вывод уходит в возвращаемый текст. captureLog снимает порог
+//    log_level и троттлинг (log.unfiltered): ответ команды не зависит от фонового лога.
 //  - Никогда не бросают: ошибка аргументов (CmdError) -> текст; баг -> текст + место в стеке.
 //  - Комнату и крипа принимают и объектом, и именем.
 //  - Plain text: консоль рендерит HTML, поэтому '<' перед буквой заменяется (см. plain).
@@ -18,6 +19,7 @@
 // описания - русские.
 
 const settings = require('settings');
+const log = require('log');
 const utils = require('utils');
 const roleMiner = require('roles/miner');
 const roleCharger = require('roles/charger');
@@ -105,7 +107,9 @@ function cmd(name, signature, desc, fn, group) {
 
 // Вывод хелпера, который пишет в console.log, - в массив строк. Если console.log в рантайме
 // окажется незаписываемым, присваивание молча не сработает (модуль не strict) и вывод просто
-// уйдёт в консоль отдельными строками.
+// уйдёт в консоль отдельными строками. Хелперы пишут через log.js - на время вызова порог
+// log_level и троттлинг сняты (log.unfiltered), иначе 'No creep to transfer' (info) или
+// повтор в окне троттлинга пропали бы из ответа команды.
 function captureLog(fn) {
     const lines = [];
     const original = console.log;
@@ -113,7 +117,7 @@ function captureLog(fn) {
         lines.push(Array.prototype.map.call(arguments, String).join(' '));
     };
     try {
-        return {result: fn(), lines};
+        return {result: log.unfiltered(fn), lines};
     } finally {
         console.log = original;
     }
@@ -919,6 +923,16 @@ function vizCmd(mode) {
     return `визуализация: ${mode}; ${bucket}`;
 }
 
+function logLevelCmd(level) {
+    const st = log.stats();
+    const info = `ключей под троттлингом ${st.keys}, подавлено повторов ${st.suppressed}`;
+    if (level === undefined) return `лог: ${settings.get(null, 'log_level')} (${info})`;
+    const err = settings.validate('log_level', level, null);
+    if (err || level === null) fail(err || "ожидается 'error' | 'warn' | 'info' | 'debug'");
+    settingsMemory().global.log_level = level;
+    return `лог: ${level}`;
+}
+
 function profileCmd(ticks) {
     if (!Game.profiler) {
         return settings.get(null, 'profiler_enabled')
@@ -1029,6 +1043,14 @@ cmd('viz', "viz(['off'|'min'|'full'])",
     "off - не рисовать ничего; min - иконки на карте и только тревоги в панели; full - всё.\n" +
     'Отдельно действует viz_min_bucket: при bucket ниже порога визуализация пропускается.',
     vizCmd, 'debug');
+cmd('logLevel', "logLevel(['error'|'warn'|'info'|'debug'])",
+    'Порог консольного лога (настройка log_level); без аргумента - текущий\n' +
+    'error - только ошибки; warn (default) - + требующее внимания; info - + рутинные события\n' +
+    '(спавн, отправки, задачи чарджерам); debug - всё, вплоть до болтовни крипов.\n' +
+    'Одно и то же событие печатается не чаще раза в 20 (error) / 100 (warn, info) / 10 (debug) тиков,\n' +
+    'число подавленных повторов дописывается к следующей строке. Исключения печатаются всегда.\n' +
+    "То же самое: set(null, 'log_level', 'info').",
+    logLevelCmd, 'debug');
 cmd('profile', 'profile([ticks=100])',
     'Запустить screeps-profiler на N тиков (нужна настройка profiler_enabled)\n' +
     "profile('reset') - остановить и сбросить.",

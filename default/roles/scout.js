@@ -1,4 +1,5 @@
 const utils = require('../utils');
+const log = require('../log');
 
 
 const configurations = [
@@ -35,7 +36,7 @@ const roleClaimer = {
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Need Scout, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            log.info(`spawn-energy:${room.name}:scout`, `[${room.name}] Need Scout, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             utils.recordModuleSpawnNeed(room, 'scout', creepConfiguration["energy"]);
             return false;
         }
@@ -43,7 +44,7 @@ const roleClaimer = {
         const name = 'Scout' + Game.time;
         const role = 'scout';
         spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role }});
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:scout`, `[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },
@@ -62,8 +63,8 @@ const roleClaimer = {
             Memory.expansion.roomName = creep.room.name;
             // Статус, который ждёт claimer.spawn (STATUS_CLAIMING); 'claimer' никто не читал.
             Memory.expansion.status = STATUS_CLAIMING;
-            console.log(`[${creep.room.name}][EXPANSION] Scout found expand room`);
-            console.log(`[${creep.room.name}][EXPANSION] Claiming status change scout->${STATUS_CLAIMING}`);
+            log.info('expansion:scout-found', `[${creep.room.name}][EXPANSION] Scout found expand room`);
+            log.info('expansion:status', `[${creep.room.name}][EXPANSION] Claiming status change scout->${STATUS_CLAIMING}`);
         }
 
         // Idle...

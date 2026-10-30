@@ -1,5 +1,6 @@
 const utils = require('../utils');
 const settings = require('../settings');
+const log = require('../log');
 
 // Максимальный drop hits одной структуры с прошлой проверки. Снимок hits per-id живёт в
 // room.memory[memKey]; починка (drop < 0) игнорируется. Структура, исчезнувшая из списка
@@ -126,7 +127,7 @@ exports.checkStatus = function(room) {
                      `Trigger: ${reasons.join(', ')}\n` +
                      `Lowest rampart: ${lowestHits} HP, max drop this tick: ${maxRampartDrop}\n` +
                      `${enemyCreeps.length} enemy creeps`;
-        console.log(text);
+        log.warn(`defend:safe-mode:${room.name}`, text);
         // Письмо - только на успех. Со следующего тика controller.safeMode выставлен, и
         // canActivateSafeMode не пустит сюда повторно - одно письмо на активацию.
         if (result == OK) Game.notify(text);
@@ -159,7 +160,7 @@ exports.checkStatus = function(room) {
         }
         const text = `Defending mode was enabled for room ${room.name}\n` +
                      `${enemyCreeps.length} enemy creeps, max rampart drop: ${maxRampartDrop}`;
-        console.log(text);
+        log.warn(`defend:on:${room.name}`, text);
         room.memory.defending = true;
     } else {
         room.memory.defending = false;

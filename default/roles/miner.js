@@ -5,6 +5,7 @@ const sources      = require('../sources');
 
 const taskResource = require('../tasks/resource');
 const settings     = require('../settings');
+const log = require('../log');
 
 
 // 1 WORK part - 2 energy per tick
@@ -121,7 +122,7 @@ const roleMiner = {
         if (!recovering) delete room.memory.miner_recovery;
 
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Room need Miner, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            log.info(`spawn-energy:${room.name}:miner`, `[${room.name}] Room need Miner, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             utils.recordSpawnNeed(room, 'miner', creepConfiguration["energy"]);
             return false;
         }
@@ -140,11 +141,11 @@ const roleMiner = {
         const energyStructures = utils.getEnergyStructures(room, spawn);
         const result = spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, miningPower, source_id }, energyStructures});
         if (result !== OK) {
-            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`spawn-fail:${room.name}:${role}:${result}`, `[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
             // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
             return !utils.isTransientSpawnError(result);
         }
-        console.log(`[${room.name}] Spawning new ${role} ${name} for source ${source_id}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name} for source ${source_id}`);
         delete room.memory.miner_recovery;
 
         return false;
@@ -164,7 +165,7 @@ const roleMiner = {
                             && c.ticksToLive > 800
             }).shift();
             if (replacement) {
-                console.log(`[${creep.room.name}] Miner ${creep.name} (TTL ${creep.ticksToLive}) hands off to ${replacement.name}`);
+                log.debug(`miner:handoff:${creep.room.name}`, `[${creep.room.name}] Miner ${creep.name} (TTL ${creep.ticksToLive}) hands off to ${replacement.name}`);
                 creep.suicide();
                 return;
             }

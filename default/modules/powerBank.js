@@ -2,6 +2,7 @@ const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const taskResource = require('../tasks/resource');
 const settings = require('../settings');
+const log = require('../log');
 
 // Squad-coordinator. State machine `Memory.power_banks[bankId].status`:
 //   'pending'   -> bank just discovered by observer; squad not yet sent
@@ -47,7 +48,7 @@ function ensureBoostMinerals(home, squad) {
         for (const resource of boosts) {
             const partType = _.findKey(BOOSTS, b => b[resource]);
             if (!partType) {
-                console.log(`[powerBank] Unknown boost resource ${resource}.`);
+                log.error('powerBank:bad-boost', `[powerBank] Unknown boost resource ${resource}.`);
                 return false;
             }
             need[resource] = (need[resource] || 0) + body.filter(p => p === partType).length * LAB_BOOST_MINERAL;
@@ -64,7 +65,7 @@ function ensureBoostMinerals(home, squad) {
             shortfall += Math.max(0, need[resource] - have);
         }
         if (shortfall > home.terminal.store.getFreeCapacity()) {
-            console.log(`[${home.name}][Boost-Buy] Terminal can't fit ${shortfall} boost minerals for squad.`);
+            log.warn(`boost-buy:squad-terminal:${home.name}`, `[${home.name}][Boost-Buy] Terminal can't fit ${shortfall} boost minerals for squad.`);
             return false;
         }
     }
@@ -122,7 +123,7 @@ exports.process = function() {
             const room = Game.rooms[bank.roomName];
             if (room && !Game.getObjectById(bank.id)) {
                 bank.status = hasLootInRoom(room) ? 'looting' : 'done';
-                console.log(`[powerBank] Bank ${bankId} gone -> ${bank.status}.`);
+                log.info('powerBank:gone', `[powerBank] Bank ${bankId} gone -> ${bank.status}.`);
                 if (bank.status === 'looting') {
                     bank.lootSeenAt = Game.time;
                     spawnCarriers(bank);
@@ -134,7 +135,7 @@ exports.process = function() {
             const squadAlive = (bank.squad || []).some(name => Game.creeps[name]);
             if (!squadAlive) {
                 // Squad полностью wiped - даём шанс заспавнить новых.
-                console.log(`[powerBank] Squad lost for ${bankId}, reverting to pending.`);
+                log.warn('powerBank:squad-lost', `[powerBank] Squad lost for ${bankId}, reverting to pending.`);
                 bank.status = 'pending';
                 bank.squad = [];
                 delete bank.home_room;
@@ -155,7 +156,7 @@ exports.process = function() {
                     spawnCarriers(bank);
                 } else if (!carriersCarrying(bank)) {
                     bank.status = 'done';
-                    console.log(`[powerBank] Bank ${bankId} fully looted.`);
+                    log.info('powerBank:looted', `[powerBank] Bank ${bankId} fully looted.`);
                 }
             } else if (!(bank.carriers || []).some(name => Game.creeps[name])) {
                 // Комната не видна и живых carrier'ов нет: первая волна (путь stealing→looting -
@@ -254,14 +255,14 @@ function tryAllocateSquad(bank) {
         }
     });
     if (r !== OK) {
-        console.log(`[powerBank] spawnCreep attacker failed: ${r} ${r.toStringStatus()}`);
+        log.error(`powerBank:spawn-attacker:${r}`, `[powerBank] spawnCreep attacker failed: ${r} ${r.toStringStatus()}`);
         return false;
     }
 
     bank.status = 'attacking';
     bank.squad = [attackerName, healerName];
     bank.home_room = home.name;
-    console.log(`[powerBank] Allocated squad for ${bank.id} from ${home.name}: ${attackerName} + ${healerName}.`);
+    log.info('powerBank:allocated', `[powerBank] Allocated squad for ${bank.id} from ${home.name}: ${attackerName} + ${healerName}.`);
     return true;
 }
 
@@ -284,7 +285,7 @@ function trySpawnHealer(bank) {
         // Урон по банку не восстанавливается - следующему скваду (pending по смерти) меньше.
         if (!attacker.memory.solo) {
             attacker.memory.solo = true;
-            console.log(`[powerBank] No healer for ${attackerName} (TTL ${attacker.ticksToLive}) - solo.`);
+            log.info('powerBank:solo', `[powerBank] No healer for ${attackerName} (TTL ${attacker.ticksToLive}) - solo.`);
         }
         return;
     }
@@ -311,7 +312,7 @@ function trySpawnHealer(bank) {
         }
     });
     if (r === OK) {
-        console.log(`[powerBank] Spawned healer ${healerName}.`);
+        log.info('powerBank:spawn-healer', `[powerBank] Spawned healer ${healerName}.`);
     }
 }
 
@@ -348,9 +349,9 @@ function spawnCarriers(bank) {
         if (r === OK) {
             bank.carriers.push(name);
             energy -= bodyCost(CARRIER_BODY);
-            console.log(`[powerBank] Spawned carrier ${name}.`);
+            log.info('powerBank:spawn-carrier', `[powerBank] Spawned carrier ${name}.`);
         } else {
-            console.log(`[powerBank] spawnCreep carrier failed: ${r} ${r.toStringStatus()}`);
+            log.error(`powerBank:spawn-carrier-fail:${r}`, `[powerBank] spawnCreep carrier failed: ${r} ${r.toStringStatus()}`);
             break;
         }
     }
@@ -369,13 +370,13 @@ function tryScheduleSteal(bank) {
         maxDistance: stealMaxDistance,
     });
     if (!home) {
-        console.log(`[powerBank] Bank ${bank.id} contested, no own room within steal range (${stealMaxDistance}) - dropping.`);
+        log.info('powerBank:drop', `[powerBank] Bank ${bank.id} contested, no own room within steal range (${stealMaxDistance}) - dropping.`);
         delete Memory.power_banks[bank.id];
         return false;
     }
     bank.home_room = home.name;
     bank.status = 'stealing';
-    console.log(`[powerBank] Bank ${bank.id} contested, scheduled loot from ${home.name}.`);
+    log.info('powerBank:steal', `[powerBank] Bank ${bank.id} contested, scheduled loot from ${home.name}.`);
     return true;
 }
 

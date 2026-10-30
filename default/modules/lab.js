@@ -1,6 +1,7 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const settings = require('../settings');
+const log = require('../log');
 
 
 // Семантический конфиг лабы: пара входных минералов на комнату. Реакция выводится
@@ -165,7 +166,7 @@ exports.planPipeline = function(target) {
         lines.push('All reactions in place.');
     }
 
-    console.log(lines.join('\n'));
+    log.print(lines.join('\n'));
     return missing;
 };
 
@@ -297,10 +298,10 @@ function forceEvacuateLabs(room, expectedOutput) {
             ? room.terminal
             : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
         if (!dump) {
-            console.log(`[${room.name}][LAB] Force-evac: нет физического места ни в terminal, ни в storage.`);
+            log.warn(`lab:evac-full:${room.name}`, `[${room.name}][LAB] Force-evac: нет физического места ни в terminal, ни в storage.`);
             return;
         }
-        console.log(`[${room.name}][LAB] Force-evac ${lab.mineralType} from lab ${lab.id} -> ${dump.structureType}`);
+        log.info(`lab:force-evac:${room.name}`, `[${room.name}][LAB] Force-evac ${lab.mineralType} from lab ${lab.id} -> ${dump.structureType}`);
         room.transfer(lab.mineralType, lab.id, dump.id);
         return; // 1 transfer per call (charger-throttle).
     }
@@ -322,7 +323,7 @@ function evacuateDirtyLabs(room, expectedOutput, reservedLabs) {
             ? room.terminal
             : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
         if (!dump) return 0;
-        console.log(`[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab.id} (expected ${expectedOutput})`);
+        log.info(`lab:evac:${room.name}`, `[${room.name}][LAB] Evacuating ${lab.mineralType} from lab ${lab.id} (expected ${expectedOutput})`);
         room.transfer(lab.mineralType, lab.id, dump.id);
         return 1;
     }
@@ -334,7 +335,7 @@ exports.runReaction = function(room) {
 
     const cfg = exports.getLabConfig(room);
     if (!cfg) {
-        console.log(`[${room.name}] Нет полного лаб-кластера (source-лабы не определились)`);
+        log.info(`lab:no-cluster:${room.name}`, `[${room.name}] Нет полного лаб-кластера (source-лабы не определились)`);
         return;
     }
     const [source1, source2] = cfg.sources;
@@ -425,10 +426,10 @@ exports.refillLabs = function(room) {
             ? room.terminal
             : (room.storage && room.storage.store.getFreeCapacity() > 0 ? room.storage : null);
         if (!dump) {
-            console.log(`[${room.name}][LAB] Source lab ${sourceLab.id} has ${sourceLab.mineralType} (expected ${expectedResource}), но дамп некуда`);
+            log.warn(`lab:source-dirty:${room.name}`, `[${room.name}][LAB] Source lab ${sourceLab.id} has ${sourceLab.mineralType} (expected ${expectedResource}), но дамп некуда`);
             continue;
         }
-        console.log(`[${room.name}][LAB] Evacuating ${sourceLab.mineralType} from source lab ${sourceLab.id} (expected ${expectedResource})`);
+        log.info(`lab:source-evac:${room.name}`, `[${room.name}][LAB] Evacuating ${sourceLab.mineralType} from source lab ${sourceLab.id} (expected ${expectedResource})`);
         room.transfer(sourceLab.mineralType, sourceLab.id, dump.id);
         return; // 1 transfer task на вызов - дадим чарджеру время.
     }
@@ -503,14 +504,14 @@ exports.transferResourcesBetweenRooms = function() {
             // а send() всё равно вернул OK. Не занимаем терминал-источник пустой отправкой -
             // пусть обслужит другого получателя.
             if (room.terminal.store.getFreeCapacity() < 10000) {
-                console.log(`[${roomName}][LAB] Terminal has no room for 10k ${requireMineral} (free ${room.terminal.store.getFreeCapacity()})`);
+                log.warn(`lab:terminal-full:${roomName}`, `[${roomName}][LAB] Terminal has no room for 10k ${requireMineral} (free ${room.terminal.store.getFreeCapacity()})`);
                 continue;
             }
 
             // Ищем комнату, в которой производится необходимый ресурс.
             const sourceRoom = findRoomWithMineral(requireMineral, roomName);
             if (!sourceRoom) {
-                console.log(`[${roomName}][LAB] Not found another room with ${requireMineral}. Lab will idle`);
+                log.warn(`lab:no-mineral:${roomName}:${requireMineral}`, `[${roomName}][LAB] Not found another room with ${requireMineral}. Lab will idle`);
                 continue;
             }
 
@@ -530,13 +531,13 @@ exports.transferResourcesBetweenRooms = function() {
                 }
                 const result = sourceRoom.terminal.send(requireMineral, 10000, roomName);
                 if (result != OK) {
-                    console.log(`[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName} failed: ${result.toStringStatus()}`);
+                    log.error(`lab:send:${sourceRoom.name}:${result}`, `[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName} failed: ${result.toStringStatus()}`);
                     continue;
                 }
-                console.log(`[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName}`);
+                log.info(`lab:sent:${sourceRoom.name}`, `[${sourceRoom.name}][LAB] Send 10k ${requireMineral} to ${roomName}`);
             } else {
                 if (!sourceRoom.storage) continue;
-                console.log(`[${sourceRoom.name}][LAB] Transfer 10k ${requireMineral} from Storage to Terminal`);
+                log.info(`lab:to-terminal:${sourceRoom.name}`, `[${sourceRoom.name}][LAB] Transfer 10k ${requireMineral} from Storage to Terminal`);
 
                 const transfer = {resource_type: requireMineral, source_id: sourceRoom.storage.id, target_id: sourceRoom.terminal.id, max_resource_count_in_target: 10000};
 

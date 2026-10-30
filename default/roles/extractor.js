@@ -7,6 +7,7 @@ const taskStructure = require('../tasks/structure');
 
 const lab = require('../modules/lab');
 const settings = require('../settings');
+const log = require('../log');
 
 
 const MAX_EXTRACTORS_IN_ROOM = 1;
@@ -62,11 +63,11 @@ const roleExtractor = {
 
         const result = spawn.spawnCreep(parts, name, {memory: { role, mineral_id, extractor_id }, energyStructures: utils.getEnergyStructures(room, spawn)});
         if (result !== OK) {
-            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`spawn-fail:${room.name}:${role}:${result}`, `[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
             // Временный отказ - ждём, как остальные роли; постоянный - не держим цепочку.
             return !utils.isTransientSpawnError(result);
         }
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
 
         // Не пытаемся спавнить других крипов в этот тик
         return false;

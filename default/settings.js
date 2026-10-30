@@ -136,7 +136,7 @@ const ENTRIES = [
     {key: 'profiler_enabled', scope: 'global', type: 'boolean', def: false, group: 'debug', legacy: 'Memory',
      desc: 'Включить screeps-profiler. Читается при загрузке кода: применится после global reset (push кода)'},
     {key: 'viz_mode', scope: 'global', type: 'enum', values: ['off', 'min', 'full'], def: 'full', group: 'debug',
-     desc: 'Визуализация: off - не рисовать ничего, min/full - рисовать (до #20 min = full). Консоль: viz(режим)'},
+     desc: 'Визуализация: off - не рисовать ничего; min - иконки на карте и только тревоги в панели комнаты; full - всё. Консоль: viz(режим)'},
     {key: 'viz_min_bucket', scope: 'global', type: 'number', def: 3000, min: 0, max: 10000, group: 'debug', legacy: 'Memory',
      desc: 'Не рисовать визуализацию при CPU bucket ниже. 0 = рисовать всегда'},
 ];

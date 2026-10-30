@@ -916,7 +916,7 @@ function vizCmd(mode) {
     const err = settings.validate('viz_mode', mode, null);
     if (err || mode === null) fail(err || "ожидается 'off' | 'min' | 'full'");
     settingsMemory().global.viz_mode = mode;
-    return `визуализация: ${mode}${mode === 'off' ? '' : ' (до #20 min и full рисуют одинаково)'}; ${bucket}`;
+    return `визуализация: ${mode}; ${bucket}`;
 }
 
 function profileCmd(ticks) {
@@ -1026,7 +1026,7 @@ cmd('labPlan', 'labPlan(продукт)',
 
 cmd('viz', "viz(['off'|'min'|'full'])",
     'Режим визуализации (настройка viz_mode); без аргумента - текущий\n' +
-    "off - не рисовать ничего; min и full до переделки панели (#20) рисуют одинаково.\n" +
+    "off - не рисовать ничего; min - иконки на карте и только тревоги в панели; full - всё.\n" +
     'Отдельно действует viz_min_bucket: при bucket ниже порога визуализация пропускается.',
     vizCmd, 'debug');
 cmd('profile', 'profile([ticks=100])',

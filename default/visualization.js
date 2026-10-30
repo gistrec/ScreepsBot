@@ -355,6 +355,7 @@ function buildHeavyRoomVisuals(room, mode) {
     // Сводка: minHits - абсолютный минимум (для осады); worst - барьер с минимальным hits/target
     // (цели у рампартов и стен могут различаться - сравнивать абсолютные hits нельзя).
     const summary = {count: barriers.length, below: 0, minHits: null, worstHits: 0, worstTarget: 0, worstRatio: null};
+    const atWar = room.isDefending || room.hasHostiles;
     for (const b of barriers) {
         const target = taskStructure.repairTargetHits(b);
         if (summary.minHits === null || b.hits < summary.minHits) summary.minHits = b.hits;
@@ -369,6 +370,9 @@ function buildHeavyRoomVisuals(room, mode) {
         if (!(b.hits < target)) continue;
         summary.below++;
         const pct = b.hits / target * 100;
+        // В мире (особенно RCL 8, где цель = hitsMax) почти все барьеры "ниже цели" - подписываем
+        // только просевшие ниже половины цели. В осаде - все ниже цели.
+        if (!atWar && pct >= 50) continue;
         v.text(pct.toFixed(pct < 10 ? 1 : 0) + '%', b.pos.x, b.pos.y + 0.15,
                {color: pct < 50 ? '#ff4444' : '#ffaa00', font: 0.3, opacity: 1});
     }

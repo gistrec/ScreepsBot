@@ -1,3 +1,5 @@
+const log = require('../log');
+
 // Per-tick кеш на room. Screeps пересоздаёт room object каждый тик, поэтому подвешенный
 // _cache живёт ровно один тик - явная инвалидация не нужна. Factory вызывается лениво
 // и ровно один раз за тик; null/undefined тоже кешируются (`in`, не `=== undefined`),
@@ -54,11 +56,11 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
     }
 
     if (!Game.getObjectById(source_id)) {
-        console.log(`[${this.name}] Source ${source_id} not found`);
+        log.warn(`room.transfer:no-source:${this.name}`, `[${this.name}] Source ${source_id} not found`);
         return
     }
     if (!Game.getObjectById(target_id)) {
-        console.log(`[${this.name}] Target ${target_id} not found`);
+        log.warn(`room.transfer:no-target:${this.name}`, `[${this.name}] Target ${target_id} not found`);
         return
     }
 
@@ -70,7 +72,7 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
     const chargers = utils.creepsByRole(this, "charger").filter(c => !c.memory.transfer && !c.memory.disassemble
         && !utils.isUnreachable(c, source_id) && !utils.isUnreachable(c, target_id));
     if (chargers.length === 0) {
-        console.log(`[${this.name}] No creep to transfer`);
+        log.info(`room.transfer:no-creep:${this.name}`, `[${this.name}] No creep to transfer`);
         return
     }
 
@@ -93,12 +95,12 @@ Room.prototype.transfer = function(resource_type, source_id, target_id, max_reso
 
     const creep = candidates[0];
     creep.memory.transfer = {resource_type, source_id, target_id, max_resource_count_in_target, min_resource_count_in_source};
-    console.log(`[${this.name}] Creep ${creep.name} will transfer ${resource_type} resource`);
+    log.info(`room.transfer:assigned:${this.name}`, `[${this.name}] Creep ${creep.name} will transfer ${resource_type} resource`);
 }
 
 Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEGER) {
     if (!this.terminal) {
-        console.log(`[${this.name}] Terminal not found`);
+        log.warn(`sendEnergy:no-terminal:${this.name}`, `[${this.name}] Terminal not found`);
         return ERR_NOT_FOUND;
     }
     // cooldown - снимок начала тика; send этого тика ловит intentSent (prototypes/structure.js).
@@ -106,7 +108,7 @@ Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEG
         return ERR_TIRED;
     }
     if (!Game.rooms[target_room] || !Game.rooms[target_room].terminal) {
-        console.log(`[${target_room}] Terminal not found`);
+        log.warn(`sendEnergy:no-terminal:${target_room}`, `[${target_room}] Terminal not found`);
         return ERR_NOT_FOUND;
     }
 
@@ -126,9 +128,9 @@ Room.prototype.sendEnergy = function(target_room, amount = Number.MAX_SAFE_INTEG
 
     const status = this.terminal.send(RESOURCE_ENERGY, amount, target_room);
     if (status == OK) {
-        console.log(`[${this.name}] Send ${amount} energy to ${target_room} with transaction cost ${cost} (${costRatio}%)`);
+        log.info(`sendEnergy:sent:${this.name}`, `[${this.name}] Send ${amount} energy to ${target_room} with transaction cost ${cost} (${costRatio}%)`);
     } else {
-        console.log(`[${this.name}] sendEnergy to ${target_room} failed: ${status.toStringStatus()}`);
+        log.error(`sendEnergy:fail:${this.name}:${status}`, `[${this.name}] sendEnergy to ${target_room} failed: ${status.toStringStatus()}`);
     }
     return status;
 }

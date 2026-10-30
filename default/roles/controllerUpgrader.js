@@ -5,6 +5,7 @@ const utils = require('../utils');
 const taskCreep     = require('../tasks/creep');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
+const log = require('../log');
 
 
 
@@ -39,7 +40,7 @@ const roleUpgrader = {
             ...room.find(FIND_MY_STRUCTURES, {filter: (s) => s.structureType == STRUCTURE_EXTENSION}),
             spawn
         ]});
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },
@@ -59,7 +60,7 @@ const roleUpgrader = {
             // стоял до смерти. Протухший id сбрасываем, без линка берём энергию из складов.
             const link = creep.memory.link_id ? Game.getObjectById(creep.memory.link_id) : null;
             if (creep.memory.link_id && !link) {
-                console.log(`[${creep.room.name}] ${creep.name} link ${creep.memory.link_id} is gone, withdrawing from storage`);
+                log.info(`upgrader:link-gone:${creep.room.name}`, `[${creep.room.name}] ${creep.name} link ${creep.memory.link_id} is gone, withdrawing from storage`);
                 delete creep.memory.link_id;
             }
             if (link) {

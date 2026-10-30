@@ -10,6 +10,7 @@
 //   2. Ищем PowerBank
 
 const modulePowerBank = require('./powerBank');
+const log = require('../log');
 
 // Сколько тиков после decayAt банка (или последнего увиденного лута) запись в 'looting'
 // переживает cleanup (см. ниже).
@@ -75,7 +76,7 @@ exports.process = function() {
             const isContested = hostileAttackers.length > 0;
             if (!existing) {
                 const note = isContested ? ` [contested by ${hostileAttackers.length} hostile attackers]` : '';
-                console.log(`[${room_name}] PowerBank found: ${power_bank.power} power, ${power_bank.hits} HP, ${power_bank.ticksToDecay} ttl${note}.`);
+                log.info(`observer:bank-found:${room_name}`, `[${room_name}] PowerBank found: ${power_bank.power} power, ${power_bank.hits} HP, ${power_bank.ticksToDecay} ttl${note}.`);
                 Memory.power_banks[power_bank.id] = {
                     id:       power_bank.id,
                     roomName: room_name,
@@ -109,7 +110,7 @@ exports.process = function() {
                 // вмешиваться поздно, доводим бой до конца. 'stealing' уже помечен.
                 if (!existing.contested && isContested && existing.status === 'pending') {
                     existing.contested = true;
-                    console.log(`[${room_name}] PowerBank ${power_bank.id} contested by ${hostileAttackers.length} hostile attackers.`);
+                    log.info(`observer:bank-contested:${room_name}`, `[${room_name}] PowerBank ${power_bank.id} contested by ${hostileAttackers.length} hostile attackers.`);
                 }
             }
         } else {
@@ -125,7 +126,7 @@ exports.process = function() {
                     if (modulePowerBank.hasLootInRoom(room)) {
                         entry.lootSeenAt = Game.time;
                     } else if (!modulePowerBank.carriersCarrying(entry)) {
-                        console.log(`[${room_name}] Bank ${id} fully looted.`);
+                        log.info(`observer:bank-looted:${room_name}`, `[${room_name}] Bank ${id} fully looted.`);
                         entry.status = 'done';
                     }
                     continue;
@@ -136,7 +137,7 @@ exports.process = function() {
                 // запись просто удалялась, если observer успевал раньше process() - и дроп терялся.
                 if (entry.home_room && (entry.status == 'attacking' || entry.status == 'stealing')) {
                     const next = modulePowerBank.hasLootInRoom(room) ? 'looting' : 'done';
-                    console.log(`[${room_name}] Bank ${id} disappeared during ${entry.status} -> ${next}.`);
+                    log.info(`observer:bank-gone:${room_name}`, `[${room_name}] Bank ${id} disappeared during ${entry.status} -> ${next}.`);
                     entry.status = next;
                     if (next == 'looting') entry.lootSeenAt = Game.time;
                     continue;

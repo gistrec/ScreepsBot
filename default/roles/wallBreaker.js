@@ -1,5 +1,6 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
+const log = require('../log');
 
 
 // Разовая задача "снести структуру в чужой/нейтральной комнате". Запускается через
@@ -29,7 +30,7 @@ const roleWallBreaker = {
 
         const home = Game.rooms[task.home_room];
         if (!home || !home.controller || !home.controller.my) {
-            console.log(`[wall_breaker] home_room ${task.home_room} not owned/visible`);
+            log.warn('wall_breaker:home', `[wall_breaker] home_room ${task.home_room} not owned/visible`);
             return true;
         }
 
@@ -37,7 +38,7 @@ const roleWallBreaker = {
         if (!spawn) return false;
 
         if (home.energyAvailable < BODY_COST) {
-            console.log(`[${home.name}][wall_breaker] Need ${BODY_COST} energy, have ${home.energyAvailable}`);
+            log.info(`spawn-energy:${home.name}:wall_breaker`, `[${home.name}][wall_breaker] Need ${BODY_COST} energy, have ${home.energyAvailable}`);
             utils.recordModuleSpawnNeed(home, 'wall_breaker', BODY_COST);
             return false;
         }
@@ -53,9 +54,9 @@ const roleWallBreaker = {
 
         const r = spawn.spawnCreep(BODY, name, {memory});
         if (r === OK) {
-            console.log(`[${home.name}][wall_breaker] Spawning ${name} → ${task.target_room}${task.boost ? ' (boost ' + task.boost + ')' : ''}`);
+            log.info(`spawn:${home.name}:wall_breaker`, `[${home.name}][wall_breaker] Spawning ${name} → ${task.target_room}${task.boost ? ' (boost ' + task.boost + ')' : ''}`);
         } else {
-            console.log(`[${home.name}][wall_breaker] spawnCreep failed: ${r} ${r.toStringStatus()}`);
+            log.error(`spawn-fail:${home.name}:wall_breaker:${r}`, `[${home.name}][wall_breaker] spawnCreep failed: ${r} ${r.toStringStatus()}`);
         }
         return false;
     },
@@ -84,7 +85,7 @@ const roleWallBreaker = {
         // В target_room - цель должна быть видна. Если её нет - значит снесли.
         const target = Game.getObjectById(creep.memory.target_id);
         if (!target) {
-            console.log(`[${creep.room.name}][wall_breaker] ${creep.name} target gone, task complete`);
+            log.info('wall_breaker:done', `[${creep.room.name}][wall_breaker] ${creep.name} target gone, task complete`);
             delete Memory.wall_break;
             creep.suicide();
             return;

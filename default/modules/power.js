@@ -2,6 +2,7 @@ const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const taskResource = require('../tasks/resource');
 const settings = require('../settings');
+const log = require('../log');
 
 // Модуль power-цикла. Phase 5+6 из плана:
 // - process(): каждый тик вызывает processPower() на power_spawn'ах с топливом.
@@ -39,7 +40,7 @@ exports.process = function() {
     // Periodic GPL log.
     if (Game.time % 1000 === 0) {
         const used = usedPowerLevels();
-        console.log(`[POWER] GPL=${Game.gpl.level} (progress ${Game.gpl.progress}/${Game.gpl.progressTotal}), used ${used} levels.`);
+        log.info('power:gpl', `[POWER] GPL=${Game.gpl.level} (progress ${Game.gpl.progress}/${Game.gpl.progressTotal}), used ${used} levels.`);
     }
 }
 
@@ -56,7 +57,7 @@ function spawnDeadOperators() {
         const entry = Memory.operators[roomName];
         const pc = Game.powerCreeps[entry.name];
         if (!pc) {
-            console.log(`[${roomName}][POWER] Operator ${entry.name} not found, removing from registry.`);
+            log.warn(`power:operator-missing:${roomName}`, `[${roomName}][POWER] Operator ${entry.name} not found, removing from registry.`);
             delete Memory.operators[roomName];
             continue;
         }
@@ -71,9 +72,9 @@ function spawnDeadOperators() {
 
         const result = pc.spawn(ps);
         if (result === OK) {
-            console.log(`[${roomName}][POWER] Spawned operator ${pc.name}.`);
+            log.info(`power:spawn-op:${roomName}`, `[${roomName}][POWER] Spawned operator ${pc.name}.`);
         } else {
-            console.log(`[${roomName}][POWER] pc.spawn failed: ${result} ${result.toStringStatus()}`);
+            log.error(`power:spawn-op-fail:${roomName}:${result}`, `[${roomName}][POWER] pc.spawn failed: ${result} ${result.toStringStatus()}`);
         }
     }
 }
@@ -103,10 +104,10 @@ function upgradeOperators() {
             if (pc.level < POWER_INFO[pwr].level[have]) continue;
             const result = pc.upgrade(pwr);
             if (result === OK) {
-                console.log(`[${roomName}][POWER] Upgraded ${pc.name}: ${pwr} ${have} -> ${have + 1}.`);
+                log.info(`power:upgrade-op:${roomName}`, `[${roomName}][POWER] Upgraded ${pc.name}: ${pwr} ${have} -> ${have + 1}.`);
                 return;  // 1 upgrade per cycle.
             }
-            console.log(`[${roomName}][POWER] pc.upgrade(${pwr}) failed: ${result} ${result.toStringStatus()}`);
+            log.error(`power:upgrade-op-fail:${roomName}:${result}`, `[${roomName}][POWER] pc.upgrade(${pwr}) failed: ${result} ${result.toStringStatus()}`);
         }
     }
 }

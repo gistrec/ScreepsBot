@@ -1,4 +1,5 @@
 const utils = require('./utils');
+const log = require('./log');
 
 // Как часто майнер перепроверяет отсутствующий/протухший container_id и link_id (см. exports.get).
 const RESCAN_INTERVAL = 50;
@@ -45,7 +46,7 @@ exports.get = function(creep, force = false) {
             return lhv.minersCount - rhv.minersCount;
         }).shift()["source"];
 
-        console.log(`[${creep.room.name}] Miner ${creep.name} will mine source ${source.id}`);
+        log.debug(`sources:assign:${creep.room.name}`, `[${creep.room.name}] Miner ${creep.name} will mine source ${source.id}`);
         creep.memory.source_id = source.id;
     }
 
@@ -67,7 +68,7 @@ exports.get = function(creep, force = false) {
             // controller_id считается от позиции контейнера - пересчитываем под новый.
             delete creep.memory.controller_id;
             if (container) {
-                console.log(`[${creep.room.name}] Miner ${creep.name} will use container at ${container.pos.x}:${container.pos.y}`);
+                log.debug(`sources:container:${creep.room.name}`, `[${creep.room.name}] Miner ${creep.name} will use container at ${container.pos.x}:${container.pos.y}`);
             }
         }
     }
@@ -87,7 +88,7 @@ exports.get = function(creep, force = false) {
         if (linkId !== creep.memory.link_id) {
             creep.memory.link_id = linkId;
             if (best) {
-                console.log(`[${creep.room.name}] Miner ${creep.name} will use link at ${best.pos.x}:${best.pos.y}`);
+                log.debug(`sources:link:${creep.room.name}`, `[${creep.room.name}] Miner ${creep.name} will use link at ${best.pos.x}:${best.pos.y}`);
             }
         }
     }
@@ -100,7 +101,7 @@ exports.get = function(creep, force = false) {
         const controller = creep.room.controller;
         if (controller && controller.my && container && container.pos.inRangeTo(controller, 3)) {
             creep.memory.controller_id = controller.id;
-            console.log(`[${creep.room.name}] Miner ${creep.name} can upgrade controller (container range ${container.pos.getRangeTo(controller)} from controller)`);
+            log.debug(`sources:controller:${creep.room.name}`, `[${creep.room.name}] Miner ${creep.name} can upgrade controller (container range ${container.pos.getRangeTo(controller)} from controller)`);
         } else {
             creep.memory.controller_id = null;
         }

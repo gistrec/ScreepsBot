@@ -6,6 +6,7 @@ const taskResource = require('../tasks/resource');
 const taskCreep  = require('../tasks/creep');
 const resourceBalance = require('../modules/resourceBalance');
 const settings   = require('../settings');
+const log = require('../log');
 
 
 // max_count подобран по реальной потребности: 2 source × 10 e/tick = 20 e/tick валового
@@ -124,7 +125,7 @@ const roleCharger = {
             // из контейнера/storage, а на полноразмерного его сменят (переработка выше).
             const pairs = Math.floor(room.energyAvailable / EMERGENCY_PAIR_COST);
             if (charger.length > 0 || pairs < 1) {
-                console.log(`[${room.name}] Need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+                log.info(`spawn-energy:${room.name}:charger`, `[${room.name}] Need Charger, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
                 utils.recordSpawnNeed(room, 'charger', creepConfiguration.energy);
                 return false;
             }
@@ -148,11 +149,11 @@ const roleCharger = {
         if (emergency) memory.emergency = true;
         const result = spawn.spawnCreep(parts, name, {memory, energyStructures});
         if (result !== OK) {
-            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`spawn-fail:${room.name}:${role}:${result}`, `[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
             // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
             return !utils.isTransientSpawnError(result);
         }
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
         return false;
     },
     upgrade: function(room) {
@@ -218,7 +219,7 @@ const roleCharger = {
             // (типично - минерал/батарейки после снятой transfer-задачи). На пол не выбрасываем:
             // никто не подберёт (политика dumpCargo в tasks/boost.js). Ждём места, логируем редко.
             if (Game.time % 100 == 0) {
-                console.log(`[${creep.room.name}] Charger ${creep.name} has nowhere to unload ${JSON.stringify(creep.store)}.`);
+                log.warn(`charger:stuck-cargo:${creep.room.name}`, `[${creep.room.name}] Charger ${creep.name} has nowhere to unload ${JSON.stringify(creep.store)}.`);
             }
             creep.say('🚧Stall');
         } else {

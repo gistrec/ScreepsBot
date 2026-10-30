@@ -5,6 +5,7 @@ const taskCreep     = require('../tasks/creep');
 const taskStructure = require('../tasks/structure');
 const taskResource = require('../tasks/resource');
 const settings = require('../settings');
+const log = require('../log');
 
 
 const MAX_PER_GAME = 6;
@@ -56,7 +57,7 @@ function getEntryPositions(home_room, target_room) {
 const roleHarvester = {
     spawn: function(spawn, opts) {
         if (!opts || !opts.home_room || !opts.target_room || !opts.home_entry || !opts.target_entry) {
-            console.log(`[harvester.spawn] Required opts: home_room, target_room, home_entry, target_entry`);
+            log.error('harvester:bad-opts', `[harvester.spawn] Required opts: home_room, target_room, home_entry, target_entry`);
             return false;
         }
 
@@ -74,7 +75,7 @@ const roleHarvester = {
             target_entry: opts.target_entry,
         };
         spawn.spawnCreep(BODY, name, {memory});
-        console.log(`[${opts.home_room}][harvester] Spawning new ${name} (${opts.home_room} <-> ${opts.target_room})`);
+        log.info(`spawn:${opts.home_room}:harvester`, `[${opts.home_room}][harvester] Spawning new ${name} (${opts.home_room} <-> ${opts.target_room})`);
         return true;
     },
 
@@ -93,14 +94,14 @@ const roleHarvester = {
             if (harvesters.length >= HARVESTERS_PER_TARGET) continue;
 
             if (room.energyAvailable < BODY_COST) {
-                console.log(`[${room.name}] Need harvester for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
+                log.info(`spawn-energy:${room.name}:harvester`, `[${room.name}] Need harvester for ${target_room}, but not enough energy [${room.energyAvailable}/${BODY_COST}]`);
                 utils.recordSpawnNeed(room, 'harvester', BODY_COST);
                 return false;
             }
 
             const positions = getEntryPositions(room.name, target_room);
             if (!positions) {
-                console.log(`[${room.name}] No direct exit to ${target_room}, skipping harvester`);
+                log.warn(`harvester:no-exit:${room.name}:${target_room}`, `[${room.name}] No direct exit to ${target_room}, skipping harvester`);
                 continue;
             }
 
@@ -115,7 +116,7 @@ const roleHarvester = {
                 }
             });
             if (result === OK) {
-                console.log(`[${room.name}] Spawning harvester ${name} for ${target_room}`);
+                log.info(`spawn:${room.name}:harvester`, `[${room.name}] Spawning harvester ${name} for ${target_room}`);
                 return false;
             }
         }

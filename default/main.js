@@ -56,6 +56,7 @@ const modulePowerBank = require('modules/powerBank');
 const visualization = require('visualization');
 const utils = require('utils');
 const settings = require('settings');
+const log = require('log');
 
 // Миграция старых Memory.X / room.memory.X в Memory.settings (v1). До чтения profiler_enabled.
 try { settings.migrate(); } catch (err) { err.log() }
@@ -228,7 +229,7 @@ loop = function () {
         }
         // Остатки one-shot scheme printer (см. историю изменений) - убираем мусор из Memory.
         delete Memory._scheme_printed_W9S39;
-        console.log("[GC] Died creeps and orphan rooms memory have been deleted");
+        log.debug('gc', "[GC] Died creeps and orphan rooms memory have been deleted");
     } catch(err) { err.log(); };
 
     for (const name in Game.creeps) try {

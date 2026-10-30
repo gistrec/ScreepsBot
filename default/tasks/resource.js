@@ -1,6 +1,7 @@
 const taskRoom = require('./room');
 const utils = require('../utils');
 const settings = require('../settings');
+const log = require('../log');
 
 
 // Нужно ли прервать долгоживущую stateful-задачу (transfer, disassemble) - чтобы
@@ -91,7 +92,7 @@ exports.fillTarget = function(creep, target, resourceType = RESOURCES_ALL) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][fillTarget] Error ${status} ${status.toStringStatus()}`)
+            log.error(`fillTarget:${creep.room.name}:${status}`, `[${creep.room.name}][fillTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -175,7 +176,7 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
 
     const shortfall = need - have;
     if (room.terminal.store.getFreeCapacity() < shortfall) {
-        console.log(`[${room.name}][Boost-Buy] Terminal full, can't fit ${shortfall} ${resourceType}.`);
+        log.warn(`boost-buy:terminal-full:${room.name}`, `[${room.name}][Boost-Buy] Terminal full, can't fit ${shortfall} ${resourceType}.`);
         return false;
     }
 
@@ -193,7 +194,7 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
         .filter(o => o.amount > 0 && o.roomName && o.price <= maxPrice)
         .sort((a, b) => a.price - b.price);
     if (sellOrders.length === 0) {
-        console.log(`[${room.name}][Boost-Buy] No SELL orders for ${resourceType} <= ${maxPrice} cr/u (need ${shortfall}).`);
+        log.warn(`boost-buy:no-orders:${room.name}:${resourceType}`, `[${room.name}][Boost-Buy] No SELL orders for ${resourceType} <= ${maxPrice} cr/u (need ${shortfall}).`);
         return false;
     }
 
@@ -201,19 +202,19 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
     const buyAmount = Math.min(shortfall, order.amount, room.terminal.store.getFreeCapacity());
     const energyCost = Game.market.calcTransactionCost(buyAmount, room.name, order.roomName);
     if (room.terminal.store.getUsedCapacity(RESOURCE_ENERGY) < energyCost) {
-        console.log(`[${room.name}][Boost-Buy] Terminal energy ${room.terminal.store.getUsedCapacity(RESOURCE_ENERGY)} < ${energyCost} (for ${buyAmount} ${resourceType} from ${order.roomName}).`);
+        log.warn(`boost-buy:energy:${room.name}`, `[${room.name}][Boost-Buy] Terminal energy ${room.terminal.store.getUsedCapacity(RESOURCE_ENERGY)} < ${energyCost} (for ${buyAmount} ${resourceType} from ${order.roomName}).`);
         return false;
     }
 
     const totalCost = order.price * buyAmount;
     if (Game.market.credits - totalCost < minCredits) {
-        console.log(`[${room.name}][Boost-Buy] Credits ${Game.market.credits} - ${totalCost} < reserve ${minCredits} for ${buyAmount} ${resourceType}.`);
+        log.warn(`boost-buy:credits:${room.name}`, `[${room.name}][Boost-Buy] Credits ${Game.market.credits} - ${totalCost} < reserve ${minCredits} for ${buyAmount} ${resourceType}.`);
         return false;
     }
 
     const result = Game.market.deal(order.id, buyAmount, room.name);
     if (result == OK) {
-        console.log(`[${room.name}][Boost-Buy] Bought ${buyAmount} ${resourceType} @ ${order.price} cr/u from ${order.roomName} (cost ${totalCost} cr, energy ${energyCost}).`);
+        log.info(`boost-buy:bought:${room.name}`, `[${room.name}][Boost-Buy] Bought ${buyAmount} ${resourceType} @ ${order.price} cr/u from ${order.roomName} (cost ${totalCost} cr, energy ${energyCost}).`);
         // Второй deal с этого терминала в том же тике процессор молча пропустит (global-intents/
         // market.js: первый ставит cooldownTime прямо в объект) - помечаем терминал занятым, как
         // это делают обёртки prototypes/structure.js для send. Сам минерал появится в store только
@@ -223,7 +224,7 @@ exports.buyMineralForBoost = function(room, resourceType, need) {
         room.terminal._intentAt = Game.time;
         return false;
     }
-    console.log(`[${room.name}][Boost-Buy] market.deal failed for ${resourceType}: ${result} ${result.toStringStatus()}`);
+    log.error(`boost-buy:deal:${room.name}:${result}`, `[${room.name}][Boost-Buy] market.deal failed for ${resourceType}: ${result} ${result.toStringStatus()}`);
     return false;
 }
 
@@ -267,7 +268,7 @@ exports.buyNukerGhodium = function(room) {
         // Запасы достаточные - снимаем висящий ордер если он есть, чтобы fee не капал зря.
         if (existing) {
             Game.market.cancelOrder(existing.id);
-            console.log(`[${room.name}][NUKER] Cancelled BUY order (G stockpile reached target).`);
+            log.info(`nuker:cancel:${room.name}`, `[${room.name}][NUKER] Cancelled BUY order (G stockpile reached target).`);
         }
         return;
     }
@@ -293,9 +294,9 @@ exports.buyNukerGhodium = function(room) {
         roomName: room.name,
     });
     if (result == OK) {
-        console.log(`[${room.name}][NUKER] Posted BUY ${need} G @ ${ourPrice} cr/u (fee ~${fee} cr, lowest sell ${lowestSell}).`);
+        log.info(`nuker:order:${room.name}`, `[${room.name}][NUKER] Posted BUY ${need} G @ ${ourPrice} cr/u (fee ~${fee} cr, lowest sell ${lowestSell}).`);
     } else {
-        console.log(`[${room.name}][NUKER] createOrder failed: ${result} ${result.toStringStatus()}`);
+        log.error(`nuker:order-fail:${room.name}:${result}`, `[${room.name}][NUKER] createOrder failed: ${result} ${result.toStringStatus()}`);
     }
 }
 
@@ -321,7 +322,7 @@ exports.scheduleNukerGhodium = function(room) {
     }).length > 0;
     if (alreadyAssigned) return;
 
-    console.log(`[${room.name}] Scheduling ghodium fill for nuker.`);
+    log.info(`nuker:fill:${room.name}`, `[${room.name}] Scheduling ghodium fill for nuker.`);
     room.transfer(RESOURCE_GHODIUM, source.id, nuker.id);
 }
 
@@ -355,7 +356,7 @@ exports.schedulePowerSpawnPower = function(room) {
     }).length > 0;
     if (alreadyAssigned) return;
 
-    console.log(`[${room.name}] Scheduling power fill for power_spawn.`);
+    log.info(`power:fill:${room.name}`, `[${room.name}] Scheduling power fill for power_spawn.`);
     room.transfer(RESOURCE_POWER, source.id, ps.id);
 }
 
@@ -418,7 +419,7 @@ exports.pickupTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][pickupTarget] Error ${status} ${status.toStringStatus()}`)
+            log.error(`pickupTarget:${creep.room.name}:${status}`, `[${creep.room.name}][pickupTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -476,7 +477,7 @@ exports.harvestTarget = function(creep, target) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][harvestTarget] Error ${status} ${status.toStringStatus()}`)
+            log.error(`harvestTarget:${creep.room.name}:${status}`, `[${creep.room.name}][harvestTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND
     }
 }
@@ -532,7 +533,7 @@ exports.withdrawTarget = function(creep, target, resourceType = RESOURCE_ENERGY,
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][withdrawTarget] Error ${status} ${status.toStringStatus()}`)
+            log.error(`withdrawTarget:${creep.room.name}:${status}`, `[${creep.room.name}][withdrawTarget] Error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND;
     }
 }
@@ -585,7 +586,7 @@ exports.withdrawClosestResources = function(creep, structures, resourceType = RE
 function stallWithForeignCargo(creep, what) {
     if (creep.store.getUsedCapacity(RESOURCE_ENERGY)) return ERR_NOT_FOUND;
     if (Game.time % 100 == 0) {
-        console.log(`[${creep.room.name}] ${creep.name} can't unload foreign cargo for ${what}: terminal+storage full.`);
+        log.warn(`charger:foreign-cargo:${creep.room.name}`, `[${creep.room.name}] ${creep.name} can't unload foreign cargo for ${what}: terminal+storage full.`);
     }
     creep.say('🚧Stall');
     return OK;
@@ -597,7 +598,7 @@ function stallWithForeignCargo(creep, what) {
 // смерти. Снимаем: груз разнесёт fill-цепочка, диспетчер поставит задачу заново (тому же
 // крипу - не поставит, см. Room.transfer). disassemble ставится вручную - её не снимаем.
 function dropUnreachableTask(creep, key, object) {
-    console.log(`[${creep.room.name}] ${creep.name} can't reach ${object.structureType} ${object.id} for ${key} task. Task was deleted.`);
+    log.warn(`task:unreachable:${creep.room.name}:${key}`, `[${creep.room.name}] ${creep.name} can't reach ${object.structureType} ${object.id} for ${key} task. Task was deleted.`);
     delete creep.memory[key];
     return ERR_NOT_FOUND;
 }
@@ -645,7 +646,7 @@ exports.disassembleResource = function(creep) {
             if (exports.fillClosestStructure(creep, STRUCTURE_STORAGE) == OK) return OK;
             // Некуда выгрузить - задачу всё равно снимаем (см. ниже), груз разнесёт fill-цепочка.
         }
-        console.log(`[${creep.room.name}] Factory overflowing for disassemble resource ${resourceType}. Task was deleted.`);
+        log.warn(`disassemble:factory-full:${creep.room.name}`, `[${creep.room.name}] Factory overflowing for disassemble resource ${resourceType}. Task was deleted.`);
         delete creep.memory.disassemble;
         return ERR_NOT_FOUND;
     }
@@ -662,7 +663,7 @@ exports.disassembleResource = function(creep) {
         // В складах не осталось. Если что-то уже в трюме - сначала довозим в фабрику и
         // только потом снимаем задачу, иначе хвост поехал бы обратно в storage fill-цепочкой.
         if (!creep.store.getUsedCapacity(resourceType)) {
-            console.log(`[${creep.room.name}] Not found resource ${resourceType} for disassemble by creep ${creep.name}. Task was deleted.`);
+            log.info(`disassemble:done:${creep.room.name}`, `[${creep.room.name}] Not found resource ${resourceType} for disassemble by creep ${creep.name}. Task was deleted.`);
             delete creep.memory.disassemble;
             return ERR_NOT_FOUND;
         }
@@ -702,7 +703,7 @@ exports.transferResource = function(creep) {
     const source = Game.getObjectById(source_id)
     const target = Game.getObjectById(target_id);
     if (!source || !target) {
-        console.log(`[${creep.room.name}] Not found source or target for transfer resource ${resource_type} by creep ${creep.name}. Task was deleted.`);
+        log.warn(`transfer:missing:${creep.room.name}`, `[${creep.room.name}] Not found source or target for transfer resource ${resource_type} by creep ${creep.name}. Task was deleted.`);
         delete creep.memory.transfer;
         return ERR_NOT_FOUND;
     }
@@ -716,7 +717,7 @@ exports.transferResource = function(creep) {
     // старый чек "== 0" этот случай не ловил.
     const freeCap = target.store.getFreeCapacity(resource_type);
     if (freeCap === null) {
-        console.log(`[${creep.room.name}] ${target.structureType} ${target.id} rejects resource ${resource_type}. Task was deleted.`);
+        log.warn(`transfer:rejected:${creep.room.name}`, `[${creep.room.name}] ${target.structureType} ${target.id} rejects resource ${resource_type}. Task was deleted.`);
         delete creep.memory.transfer;
         return ERR_NOT_FOUND;
     }
@@ -730,7 +731,7 @@ exports.transferResource = function(creep) {
             // Терминал и storage полны (или их нет) - раньше возвращали OK, задача с грузом
             // висела навсегда. Снимаем задачу, груз разнесёт обычная fill-цепочка.
         }
-        console.log(`[${creep.room.name}] ${target.structureType} is overflowed for transfer resource ${resource_type}. Task was deleted.`);
+        log.info(`transfer:target-full:${creep.room.name}`, `[${creep.room.name}] ${target.structureType} is overflowed for transfer resource ${resource_type}. Task was deleted.`);
         delete creep.memory.transfer;
         return ERR_NOT_FOUND;
     }
@@ -742,14 +743,14 @@ exports.transferResource = function(creep) {
     } else {
         const targetResourceCount = target.store.getUsedCapacity(resource_type);
         if (max_resource_count_in_target && targetResourceCount > max_resource_count_in_target) {
-            console.log(`[${creep.room.name}] Transfer of ${resource_type} using the creep ${creep.name} is completed - the target has ${targetResourceCount} resources.`);
+            log.info(`transfer:done:${creep.room.name}`, `[${creep.room.name}] Transfer of ${resource_type} using the creep ${creep.name} is completed - the target has ${targetResourceCount} resources.`);
             delete creep.memory.transfer;
             return ERR_NOT_FOUND;
         }
 
         const sourceResourceCount = source.store.getUsedCapacity(resource_type);
         if (!sourceResourceCount) {
-            console.log(`[${creep.room.name}] Not found resource ${resource_type} for transfer by creep ${creep.name}. Task was deleted.`);
+            log.info(`transfer:source-empty:${creep.room.name}`, `[${creep.room.name}] Not found resource ${resource_type} for transfer by creep ${creep.name}. Task was deleted.`);
             delete creep.memory.transfer;
             return ERR_NOT_FOUND;
         }
@@ -759,7 +760,7 @@ exports.transferResource = function(creep) {
             ? sourceResourceCount - min_resource_count_in_source
             : sourceResourceCount;
         if (availableInSource <= 0) {
-            console.log(`[${creep.room.name}] Transfer of ${resource_type} completed - source reserved minimum (${sourceResourceCount}/${min_resource_count_in_source}).`);
+            log.info(`transfer:reserve:${creep.room.name}`, `[${creep.room.name}] Transfer of ${resource_type} completed - source reserved minimum (${sourceResourceCount}/${min_resource_count_in_source}).`);
             delete creep.memory.transfer;
             return ERR_NOT_FOUND;
         }

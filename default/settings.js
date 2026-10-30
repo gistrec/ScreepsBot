@@ -139,6 +139,8 @@ const ENTRIES = [
      desc: 'Визуализация: off - не рисовать ничего; min - иконки на карте и только тревоги в панели комнаты; full - всё. Консоль: viz(режим)'},
     {key: 'viz_min_bucket', scope: 'global', type: 'number', def: 3000, min: 0, max: 10000, group: 'debug', legacy: 'Memory',
      desc: 'Не рисовать визуализацию при CPU bucket ниже. 0 = рисовать всегда'},
+    {key: 'log_level', scope: 'global', type: 'enum', values: ['error', 'warn', 'info', 'debug'], def: 'warn', group: 'debug',
+     desc: 'Порог консольного лога (log.js): error - только ошибки; warn - + требующее внимания; info - + рутинные события (спавн, отправки, задачи); debug - всё. Повторы одного события троттлятся. Исключения печатаются всегда. Консоль: logLevel(уровень)'},
 ];
 
 // Бывший хардкод skip_rooms в modules/build.js - сеется в auto_build_disabled при миграции v1.

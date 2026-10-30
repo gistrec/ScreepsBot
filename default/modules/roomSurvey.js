@@ -1,5 +1,6 @@
 const profiler = require('../screeps-profiler');
 const observer = require('./observer');
+const log = require('../log');
 
 // Сканируем кандидатов под expansion и оцениваем место под базу.
 // Терраин и список соседей доступны без видимости (Game.map.getRoomTerrain /
@@ -288,9 +289,9 @@ exports.findBestAnchor = function(roomName, n = 5) {
         || a.totalConflicts - b.totalConflicts
     );
     const top = candidates.slice(0, n);
-    console.log(`[${roomName}] Top ${top.length} base anchors (sorted by schemeConflicts asc):`);
+    log.print(`[${roomName}] Top ${top.length} base anchors (sorted by schemeConflicts asc):`);
     for (const c of top) {
-        console.log(`  center=(${c.x},${c.y}) spawn=(${c.x + 2},${c.y}) | scheme=${c.schemeConflicts} (walls=${c.walls}, edges=${c.edges}) | total=${c.totalConflicts}`);
+        log.print(`  center=(${c.x},${c.y}) spawn=(${c.x + 2},${c.y}) | scheme=${c.schemeConflicts} (walls=${c.walls}, edges=${c.edges}) | total=${c.totalConflicts}`);
     }
     return top;
 };

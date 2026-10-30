@@ -1,3 +1,5 @@
+const log = require('./log');
+
 function isInWhitelist(entity, whitelist) {
     return !entity.owner || !whitelist.includes(entity.owner.username);
 }
@@ -359,6 +361,6 @@ exports.moveToTarget = function(creep, target, opts) {
     if (oldest !== null && Object.keys(map).length >= UNREACHABLE_MAX) delete map[oldest];
     const ticks = Math.min(UNREACHABLE_TICKS * Math.pow(2, k - 1), UNREACHABLE_TICKS_MAX);
     map[target.id] = {u: Game.time + ticks, k};
-    console.log(`[${creep.room.name}] ${creep.name} can't reach ${target.structureType || 'target'} ${target.id} (${NO_PATH_LIMIT}x ERR_NO_PATH), skipping it for ${ticks} ticks`);
+    log.info(`unreachable:${creep.room.name}`, `[${creep.room.name}] ${creep.name} can't reach ${target.structureType || 'target'} ${target.id} (${NO_PATH_LIMIT}x ERR_NO_PATH), skipping it for ${ticks} ticks`);
     return OK;
 }

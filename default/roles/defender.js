@@ -3,6 +3,7 @@ const utils = require('../utils');
 const taskCreep     = require('../tasks/creep');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
+const log = require('../log');
 
 const MAX_PER_ROOM = 1;
 const MAX_PER_DEFENDING_ROOM = 2;
@@ -49,7 +50,7 @@ const roleDefender = {
                 creep.memory.repairing = wall.id;
             }
         }
-        console.log(`[${room.name}][Defender] Rebalancing defenders`);
+        log.info(`rebalance:${room.name}:defender`, `[${room.name}][Defender] Rebalancing defenders`);
 
     },
     spawn: function(room) {
@@ -74,7 +75,7 @@ const roleDefender = {
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Need Defender, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            log.info(`spawn-energy:${room.name}:defender`, `[${room.name}] Need Defender, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             utils.recordSpawnNeed(room, 'defender', creepConfiguration["energy"]);
             return false;
         }
@@ -85,7 +86,7 @@ const roleDefender = {
         const name = 'Defender' + Game.time;
         const role = 'defender';
         spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, boost }, energyStructures: utils.getEnergyStructures(room, spawn)});
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
 
         return false;
     },

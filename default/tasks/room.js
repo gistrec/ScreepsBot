@@ -1,4 +1,5 @@
 const utils = require('../utils');
+const log = require('../log');
 
 // Key - roomName
 let renewingCreeps = {}
@@ -41,7 +42,7 @@ exports.recalculateCostMatrixRewrites = function(room) {
             }
         }
     }
-    console.log(`[${room.name}] Cost matrix recalculated`);
+    log.debug(`room:cost-matrix:${room.name}`, `[${room.name}] Cost matrix recalculated`);
 }
 
 exports.applyCostMatrixRewrites = function(roomName, costMatrix) {
@@ -63,7 +64,7 @@ const isRenewingNow = function(room) {
     if (!creep.memory.renewing || creep.ticksToLive == 0 || creep.ticksToLive == CREEP_LIFE_TIME || creep.hits == 0) {
         creep.memory.renewing = false;
         delete renewingCreeps[room.name];
-        console.log(`[${room.name}] Finish renewing creep ${creep.name}`);
+        log.debug(`room:renew-done:${room.name}`, `[${room.name}] Finish renewing creep ${creep.name}`);
         return ERR_NOT_FOUND;
     }
 
@@ -133,7 +134,7 @@ exports.claimClosest = function(creep) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][upgradeController] ${creep.name} error ${status} ${status.toStringStatus()}`)
+            log.error(`upgradeController:${creep.room.name}:${status}`, `[${creep.room.name}][upgradeController] ${creep.name} error ${status} ${status.toStringStatus()}`)
             return ERR_NOT_FOUND
     }
 }

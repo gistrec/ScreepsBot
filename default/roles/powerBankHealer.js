@@ -1,3 +1,5 @@
+const log = require('../log');
+
 const roleHealer = {
     run: function(creep) {
         if (creep.fatigue !== 0) return;
@@ -17,7 +19,7 @@ const roleHealer = {
                 filter: c => _.find(c.body, p => p.type === ATTACK || p.type === RANGED_ATTACK)
             });
             if (hostile) {
-                console.log(`[${creep.name}] Hostile detected, retreating.`);
+                log.warn('powerBank:retreat-healer', `[${creep.name}] Hostile detected, retreating.`);
                 creep.memory.recycling = true;
                 return;
             }

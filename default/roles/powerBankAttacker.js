@@ -1,4 +1,5 @@
 const settings = require('../settings');
+const log = require('../log');
 
 // Travel в комнату банка через безопасный маршрут: Game.map.findRoute со
 // штрафом Infinity на чужие owned-комнаты (видимые сейчас + засёрвейенные)
@@ -32,7 +33,7 @@ function travelToBankRoom(creep, bankPos) {
             },
         });
         if (route === ERR_NO_PATH || !route.length) {
-            console.log(`[${creep.name}] No safe route ${creep.room.name} -> ${bankPos.roomName}, fallback direct`);
+            log.warn(`powerBank:no-route:${bankPos.roomName}`, `[${creep.name}] No safe route ${creep.room.name} -> ${bankPos.roomName}, fallback direct`);
             creep.moveTo(bankPos, {reusePath: 10, visualizePathStyle: {stroke: '#ff4444', lineStyle: 'dashed'}});
             return;
         }
@@ -96,7 +97,7 @@ const roleAttacker = {
                 filter: c => _.find(c.body, p => p.type === ATTACK || p.type === RANGED_ATTACK)
             });
             if (hostile) {
-                console.log(`[${creep.name}] Hostile detected at bank room, retreating to ${creep.memory.home_room}.`);
+                log.warn(`powerBank:retreat:${bank.roomName}`, `[${creep.name}] Hostile detected at bank room, retreating to ${creep.memory.home_room}.`);
                 creep.memory.recycling = true;
                 return;
             }

@@ -1,6 +1,7 @@
 const profiler = require('../screeps-profiler');
 const utils = require('../utils');
 const settings = require('../settings');
+const log = require('../log');
 
 // TODO: Check link near source
 
@@ -214,15 +215,15 @@ function buildContainersNearSources(room) {
         }
 
         if (candidates.length === 0) {
-            console.log(`[${room.name}][BUILD] No walkable adjacent tile for container near source ${source.id}`);
+            log.warn(`build:container-spot:${room.name}`, `[${room.name}][BUILD] No walkable adjacent tile for container near source ${source.id}`);
             continue;
         }
         const best = target.pos.findClosestByPath(candidates) || candidates[0];
         const result = room.createConstructionSite(best, STRUCTURE_CONTAINER);
         if (result === OK) {
-            console.log(`[${room.name}][BUILD] Container site placed at ${best.x}:${best.y} for source ${source.id}`);
+            log.info(`build:container:${room.name}`, `[${room.name}][BUILD] Container site placed at ${best.x}:${best.y} for source ${source.id}`);
         } else {
-            console.log(`[${room.name}][BUILD] createConstructionSite container at ${best.x}:${best.y} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`build:container-fail:${room.name}:${result}`, `[${room.name}][BUILD] createConstructionSite container at ${best.x}:${best.y} failed: ${result} ${result.toStringStatus()}`);
         }
     }
 }
@@ -285,15 +286,15 @@ function buildLinksNearSources(room) {
             }
         }
         if (candidates.length === 0) {
-            console.log(`[${room.name}][BUILD] No spot for link near source ${source.id}`);
+            log.warn(`build:link-spot:${room.name}`, `[${room.name}][BUILD] No spot for link near source ${source.id}`);
             continue;
         }
         const best = anchor.pos.findClosestByPath(candidates) || candidates[0];
         const result = room.createConstructionSite(best, STRUCTURE_LINK);
         if (result === OK) {
-            console.log(`[${room.name}][BUILD] Link site at ${best.x}:${best.y} for source ${source.id}`);
+            log.info(`build:link:${room.name}`, `[${room.name}][BUILD] Link site at ${best.x}:${best.y} for source ${source.id}`);
         } else {
-            console.log(`[${room.name}][BUILD] createConstructionSite link failed: ${result} ${result.toStringStatus()}`);
+            log.error(`build:link-fail:${room.name}:${result}`, `[${room.name}][BUILD] createConstructionSite link failed: ${result} ${result.toStringStatus()}`);
         }
         return; // 1 site per call.
     }
@@ -469,12 +470,12 @@ function getBaseAnchor(room) {
 // иначе после level-up до спавн-постройки сайты scheme'а отложатся до 500-тик цикла.
 exports.buildMissingStructures = function(room) {
     if (!room.controller || !room.controller.my) {
-        console.log(`[${room.name}][BUILD] Room is not mine`);
+        log.info(`build:not-mine:${room.name}`, `[${room.name}][BUILD] Room is not mine`);
         return false;
     }
     const anchor = getBaseAnchor(room);
     if (!anchor) {
-        console.log(`[${room.name}][BUILD] Spawn not found`);
+        log.info(`build:no-spawn:${room.name}`, `[${room.name}][BUILD] Spawn not found`);
         return false;
     }
 
@@ -544,7 +545,7 @@ exports.process = function() {
 
         if (Game.time % 10 === 0) {
             if (room.memory.last_build_level !== room.controller.level) {
-                console.log(`[${room.name}][BUILD] Building missing structures after level up`);
+                log.info(`build:level-up:${room.name}`, `[${room.name}][BUILD] Building missing structures after level up`);
                 // last_build_level обновляем только при успехе - чтобы при expansion'е,
                 // когда спавн ещё не построен, повторно пытаться каждые 10 тиков.
                 if (this.buildMissingStructures(room)) {

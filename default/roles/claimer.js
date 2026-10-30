@@ -3,6 +3,7 @@ const utils = require('../utils');
 const taskResource  = require('../tasks/resource');
 const taskStructure = require('../tasks/structure');
 const roleRemoteUpgrader = require('./remoteUpgrader');
+const log = require('../log');
 
 
 const configurations = [
@@ -38,13 +39,13 @@ const roleClaimer = {
                       && (utils.getMyStructuresByType(r)[STRUCTURE_SPAWN] || []).some(s => s.isActive()),
         });
         if (!room) {
-            console.log(`[EXPANSION] No own room with energyCapacity >= ${configurations[0].energy} for claimer`);
+            log.warn('expansion:no-claimer-room', `[EXPANSION] No own room with energyCapacity >= ${configurations[0].energy} for claimer`);
             return true;
         }
         // Preflight: клеймер (1200) дешевле remoteUpgrader'а (1550). Если RU собрать негде, клейм
         // даст сайт спавна без строителей и expansion зависнет в BUILDING - не начинаем.
         if (!roleRemoteUpgrader.findSpawnRoom(expand.pos.roomName)) {
-            console.log(`[EXPANSION] No own room able to spawn remote_upgrader - claimer not spawned, expansion on hold`);
+            log.warn('expansion:no-ru-room', `[EXPANSION] No own room able to spawn remote_upgrader - claimer not spawned, expansion on hold`);
             return true;
         }
 
@@ -55,7 +56,7 @@ const roleClaimer = {
 
         const creepConfiguration = utils.getAvailableCreepConfiguration(configurations, room);
         if (creepConfiguration["energy"] > room.energyAvailable) {
-            console.log(`[${room.name}] Need Claimer, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
+            log.info(`spawn-energy:${room.name}:claimer`, `[${room.name}] Need Claimer, but not enought energy [${room.energyAvailable}/${creepConfiguration["energy"]}]`)
             utils.recordModuleSpawnNeed(room, 'claimer', creepConfiguration["energy"]);
             return false;
         }
@@ -64,7 +65,7 @@ const roleClaimer = {
         const role = 'claimer';
         const spawn_room = room.name;
         spawn.spawnCreep(creepConfiguration["parts"], name, {memory: { role, spawn_room }});
-        console.log(`[${room.name}] Spawning new ${role} ${name} for ${expand.pos.roomName}`);
+        log.info(`spawn:${room.name}:claimer`, `[${room.name}] Spawning new ${role} ${name} for ${expand.pos.roomName}`);
 
         return false;
     },
@@ -80,7 +81,7 @@ const roleClaimer = {
 
         const expand = Game.flags['Expand']
         if (!expand) {
-            console.log('[EXPANSION] Expand flag not found - stop claiming')
+            log.info('expansion:flag-missing', '[EXPANSION] Expand flag not found - stop claiming')
             Memory.expansion.status = STATUS_IDLE;
 
             creep.suicide();
@@ -131,13 +132,13 @@ const roleClaimer = {
             const result = hasSpawn ? OK : creep.room.createConstructionSite(x, y, STRUCTURE_SPAWN, roomName);
             if (result !== OK) {
                 if (Game.time % 10 === 0) {
-                    console.log(`[${creep.room.name}] createConstructionSite spawn at ${x}:${y} failed: ${result} ${result.toStringStatus()} - move the Expand flag`);
+                    log.warn(`claimer:spawn-site:${creep.room.name}:${result}`, `[${creep.room.name}] createConstructionSite spawn at ${x}:${y} failed: ${result} ${result.toStringStatus()} - move the Expand flag`);
                 }
                 return;
             }
 
             Memory.expansion.status = STATUS_BUILDING;
-            console.log(`[${creep.room.name}] Claiming complete. Start building`);
+            log.info('expansion:claimed', `[${creep.room.name}] Claiming complete. Start building`);
 
             creep.suicide();
         }

@@ -1,6 +1,7 @@
 const taskCreep = require('../tasks/creep')
 const taskBoost = require('../tasks/boost')
 const utils = require('../utils')
+const log = require('../log');
 
 // energy == реальная стоимость тела (BODYPART_COST), иначе гейт по energyAvailable пропускает,
 // а spawnCreep отвечает ERR_NOT_ENOUGH_ENERGY. Тиры: RCL 4-5 (cap 1300/1800) → 1160,
@@ -65,7 +66,7 @@ const roleRampartDefender = {
         // Ждём энергию так же, как miner/charger/upgrader: защитник приоритетнее ролей ниже
         // по цепочке, extension'ы дольются за несколько тиков.
         if (creepConfiguration.energy > room.energyAvailable) {
-            console.log(`[${room.name}] Need RampartDefender, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
+            log.info(`spawn-energy:${room.name}:rampart_defender`, `[${room.name}] Need RampartDefender, but not enought energy [${room.energyAvailable}/${creepConfiguration.energy}]`);
             utils.recordSpawnNeed(room, 'rampart_defender', creepConfiguration.energy);
             return false;
         }
@@ -76,11 +77,11 @@ const roleRampartDefender = {
         const energyStructures = utils.getEnergyStructures(room, spawn);
         const result = spawn.spawnCreep(creepConfiguration["parts"], name, { memory: { role, boost_queue }, energyStructures});
         if (result !== OK) {
-            console.log(`[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
+            log.error(`spawn-fail:${room.name}:${role}:${result}`, `[${room.name}] spawnCreep ${role} failed: ${result} ${result.toStringStatus()}`);
             // Временный отказ - ждём, как на гейте по энергии; постоянный - не держим цепочку.
             return !utils.isTransientSpawnError(result);
         }
-        console.log(`[${room.name}] Spawning new ${role} ${name}`);
+        log.info(`spawn:${room.name}:${role}`, `[${room.name}] Spawning new ${role} ${name}`);
         return false;
     },
     run: function(creep) {

@@ -1,6 +1,7 @@
 const taskResource = require('./resource');
 const labModule    = require('modules/lab');
 const utils        = require('utils');
+const log = require('../log');
 
 // Zero-CARRY крипы (powerBank attacker/healer) не могут сами перевозить ресурсы -
 // делегируем заполнение/выгрузку лабы чарджеру через room.transfer. Перед каждой
@@ -57,7 +58,7 @@ function chargerEvacLab(creep, lab, resourceType) {
         // Терминал и storage оба переполнены - boost-задача висит, пока что-то не освободится.
         // Логируем редко (1/100 тиков), чтобы не спамить во время долгих stall'ов.
         if (Game.time % 100 == 0) {
-            console.log(`[${creep.room.name}][Boost] ${creep.name} can't evac ${resourceType} from lab ${lab.id}: terminal+storage full.`);
+            log.warn(`boost:evac-full:${creep.room.name}`, `[${creep.room.name}][Boost] ${creep.name} can't evac ${resourceType} from lab ${lab.id}: terminal+storage full.`);
         }
         creep.say('🚧Stall');
         return;
@@ -73,7 +74,7 @@ function dumpCargo(creep) {
     if (taskResource.fillClosestStructure(creep, STRUCTURE_TERMINAL) == OK) return OK;
     if (taskResource.fillClosestStructure(creep, STRUCTURE_STORAGE)  == OK) return OK;
     if (Game.time % 100 == 0) {
-        console.log(`[${creep.room.name}][Boost] ${creep.name} can't dump cargo: terminal+storage full.`);
+        log.warn(`boost:dump-full:${creep.room.name}`, `[${creep.room.name}][Boost] ${creep.name} can't dump cargo: terminal+storage full.`);
     }
     creep.say('🚧Stall');
     return ERR_NOT_FOUND;
@@ -93,7 +94,7 @@ exports.canBoost = function(creep, resourceType) {
 exports.hasBoost = function(creep, resourceType) {
     const partType = _.findKey(BOOSTS, boost => boost[resourceType]);
     if (!partType) {
-        console.log(`[${creep.room.name}][Boost] Not found resource type '${resourceType}' for check creep boost part`);
+        log.error('boost:bad-resource', `[${creep.room.name}][Boost] Not found resource type '${resourceType}' for check creep boost part`);
         return false
     }
     return _.filter(creep.body, part => part.type == partType && part.boost).length > 0;
@@ -197,7 +198,7 @@ exports.checkBoost = function(creep) {
             creep.say('⏳Wait lab');
             return OK;
         }
-        console.log(`[${creep.room.name}][Boost] Not found lab for boost creep ${creep.name}. Boost task was deleted.`);
+        log.warn(`boost:no-lab:${creep.room.name}`, `[${creep.room.name}][Boost] Not found lab for boost creep ${creep.name}. Boost task was deleted.`);
         delete creep.memory.boost;
         return ERR_NOT_FOUND;
     }
@@ -207,14 +208,14 @@ exports.checkBoost = function(creep) {
     const resourceType = creep.memory.boost;
     const partType = _.findKey(BOOSTS, boost => boost[resourceType]);
     if (!partType) {
-        console.log(`[${creep.room.name}][Boost] Incorrect resource type '${resourceType}' for boost creep '${creep.name}'. Boost task was deleted.`);
+        log.error(`boost:bad-task:${creep.room.name}`, `[${creep.room.name}][Boost] Incorrect resource type '${resourceType}' for boost creep '${creep.name}'. Boost task was deleted.`);
         delete creep.memory.lab_id;
         delete creep.memory.boost;
         return ERR_NOT_FOUND;
     }
     const partsCount = _.filter(creep.body, part => part.type == partType).length;
     if (!partsCount) {
-        console.log(`[${creep.room.name}][Boost] Creep '${creep.name}' doesn't have '${partType}' parts for boost by '${resourceType}'. Boost task was deleted.`);
+        log.warn(`boost:no-parts:${creep.room.name}`, `[${creep.room.name}][Boost] Creep '${creep.name}' doesn't have '${partType}' parts for boost by '${resourceType}'. Boost task was deleted.`);
         delete creep.memory.lab_id;
         delete creep.memory.boost;
         return ERR_NOT_FOUND;
@@ -251,7 +252,7 @@ exports.checkBoost = function(creep) {
             const energyCount = Math.min(needEnergy, creep.store.getFreeCapacity());
             const result = taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_CONTAINER, STRUCTURE_TERMINAL], RESOURCE_ENERGY, energyCount);
             if (result == ERR_NOT_FOUND) {
-                console.log(`[${creep.room.name}][Boost] Not found energy for boost creep ${creep.name}. Boost task was deleted.`);
+                log.warn(`boost:no-energy:${creep.room.name}`, `[${creep.room.name}][Boost] Not found energy for boost creep ${creep.name}. Boost task was deleted.`);
                 delete creep.memory.lab_id;
                 delete creep.memory.boost;
                 return ERR_NOT_FOUND;
@@ -281,7 +282,7 @@ exports.checkBoost = function(creep) {
                                 && lab.store.getUsedCapacity(lab.mineralType) > 0;
         if (labHasWrongMineral && creep.store.getFreeCapacity() > 0) {
             if (Game.time % 100 == 0) {
-                console.log(`[${creep.room.name}][Boost] ${creep.name} withdraw extra mineral ${lab.mineralType} from lab ${lab.id}`)
+                log.debug(`boost:lab-wrong-mineral:${creep.room.name}`, `[${creep.room.name}][Boost] ${creep.name} withdraw extra mineral ${lab.mineralType} from lab ${lab.id}`)
             }
             taskResource.withdrawTarget(creep, lab, lab.mineralType);
         }else {
@@ -289,7 +290,7 @@ exports.checkBoost = function(creep) {
             // market.deal + chargerEvac), поэтому fallback на storage. Логируем редко, чтобы
             // не спамить во время длинного stall'а.
             if (Game.time % 100 == 0) {
-                console.log(`[${creep.room.name}][Boost] ${creep.name} transfer extra cargo (lab=${lab.mineralType || 'empty'})`)
+                log.debug(`boost:extra-cargo:${creep.room.name}`, `[${creep.room.name}][Boost] ${creep.name} transfer extra cargo (lab=${lab.mineralType || 'empty'})`)
             }
             dumpCargo(creep);
         }
@@ -325,7 +326,7 @@ exports.checkBoost = function(creep) {
             const resourceCount = Math.min(needResources, creep.store.getFreeCapacity());
             const result = taskResource.withdrawClosestResources(creep, [STRUCTURE_STORAGE, STRUCTURE_CONTAINER, STRUCTURE_TERMINAL], resourceType, resourceCount);
             if (result == ERR_NOT_FOUND) {
-                console.log(`[${creep.room.name}][Boost] Not found resource ${resourceType} for boost creep ${creep.name}. Boost task was deleted.`);
+                log.warn(`boost:no-resource:${creep.room.name}:${resourceType}`, `[${creep.room.name}][Boost] Not found resource ${resourceType} for boost creep ${creep.name}. Boost task was deleted.`);
                 delete creep.memory.lab_id;
                 delete creep.memory.boost;
                 return ERR_NOT_FOUND;
@@ -370,7 +371,7 @@ exports.checkBoost = function(creep) {
 
         default:
             creep.say(`⚠️Error ${status}`)
-            console.log(`[${creep.room.name}][Boost] ${creep.name} error ${status} ${status.toStringStatus()}. Boost task was deleted`)
+            log.error(`boost:error:${creep.room.name}:${status}`, `[${creep.room.name}][Boost] ${creep.name} error ${status} ${status.toStringStatus()}. Boost task was deleted`)
             delete creep.memory.lab_id
             delete creep.memory.boost
             return ERR_NOT_FOUND;
@@ -411,7 +412,7 @@ exports.checkUnboost = function(creep) {
     })();
 
     if (!lab) {
-        console.log(`[${creep.room.name}][Unboost] Not found lab for ${creep.name}. Unboost task was deleted.`);
+        log.warn(`unboost:no-lab:${creep.room.name}`, `[${creep.room.name}][Unboost] Not found lab for ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
         delete creep.memory.lab_id;
         delete creep.memory.unboost_container_id;
@@ -441,7 +442,7 @@ exports.checkUnboost = function(creep) {
     })();
 
     if (!container) {
-        console.log(`[${creep.room.name}][Unboost] Not found container for ${creep.name}. Unboost task was deleted.`);
+        log.warn(`unboost:no-container:${creep.room.name}`, `[${creep.room.name}][Unboost] Not found container for ${creep.name}. Unboost task was deleted.`);
         delete creep.memory.unboost;
         delete creep.memory.lab_id;
         delete creep.memory.unboost_container_id;
@@ -471,7 +472,7 @@ exports.checkUnboost = function(creep) {
         case ERR_NOT_FOUND:
             // Бустов на теле нет - снимать нечего. boosted тоже снимаем: иначе upgrader навсегда
             // остаётся без продления TTL (roles/upgrader.js, tasks/room.js).
-            console.log(`[${creep.room.name}][Unboost] ${creep.name} has no boosted parts. Unboost task was deleted.`);
+            log.info(`unboost:no-boosts:${creep.room.name}`, `[${creep.room.name}][Unboost] ${creep.name} has no boosted parts. Unboost task was deleted.`);
             delete creep.memory.unboost;
             delete creep.memory.lab_id;
             delete creep.memory.unboost_container_id;
@@ -479,7 +480,7 @@ exports.checkUnboost = function(creep) {
             return ERR_NOT_FOUND;
 
         default:
-            console.log(`[${creep.room.name}][Unboost] ${creep.name} error ${status} ${status.toStringStatus()}. Unboost task was deleted.`);
+            log.error(`unboost:error:${creep.room.name}:${status}`, `[${creep.room.name}][Unboost] ${creep.name} error ${status} ${status.toStringStatus()}. Unboost task was deleted.`);
             delete creep.memory.unboost;
             delete creep.memory.lab_id;
             delete creep.memory.unboost_container_id;

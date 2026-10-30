@@ -1,4 +1,5 @@
 const taskRoom = require('./room');
+const log = require('../log');
 
 /**
  * Проверяем ttl бота.
@@ -111,11 +112,11 @@ exports.checkRecycling = function(creep) {
             // Последний fallback - любой свой спавн. Если совсем нет - креп умрёт от TTL.
             const anySpawn = Object.values(Game.spawns).find((s) => s.isActive());
             if (anySpawn) {
-                console.log(`[Recycling] No home spawn for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}, fallback to ${anySpawn.name}`);
+                log.info('recycle:fallback-spawn', `[Recycling] No home spawn for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}, fallback to ${anySpawn.name}`);
                 creep.memory.spawn_id = anySpawn.id;
                 return anySpawn.id;
             }
-            console.log(`[Recycling] No spawns available for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}`);
+            log.warn('recycle:no-spawn', `[Recycling] No spawns available for ${creep.name} ${creep.pos.x}:${creep.pos.y}:${creep.pos.roomName}`);
             return null;
         })();
         if (!spawn_id) return;
@@ -125,7 +126,7 @@ exports.checkRecycling = function(creep) {
             // Раньше spawn_id не перевыбирался: "Error Spawn" до смерти от TTL, а к неактивному
             // крип шёл через полкарты, чтобы там получить ERR_RCL_NOT_ENOUGH. Сбрасываем до
             // движения, следующий тик ищет заново.
-            console.log(`[Recycling] Spawn ${spawn_id} for ${creep.name} is ${spawn ? 'inactive' : 'gone'}, re-resolving`);
+            log.info('recycle:spawn-gone', `[Recycling] Spawn ${spawn_id} for ${creep.name} is ${spawn ? 'inactive' : 'gone'}, re-resolving`);
             delete creep.memory.spawn_id;
             creep.say("Error Spawn");
             return OK;
@@ -145,7 +146,7 @@ exports.checkRecycling = function(creep) {
             // Спавн стал неактивным между проверкой и вызовом и т.п. Раньше задача снималась без
             // переработки, роль ставила её снова - крип стоял у спавна до смерти. Перевыбираем
             // спавн (поиск выше берёт только активные), задачу держим.
-            console.log(`[Recycling] ${creep.name} recycleCreep at ${spawn.name} failed: ${status} ${status.toStringStatus()}, re-resolving spawn`);
+            log.error(`recycle:error:${status}`, `[Recycling] ${creep.name} recycleCreep at ${spawn.name} failed: ${status} ${status.toStringStatus()}, re-resolving spawn`);
             delete creep.memory.spawn_id;
             return OK;
         }
@@ -182,7 +183,7 @@ exports.checkGoTo = function(creep) {
                          : (state.no_path >= GOTO_MAX_NO_PATH) ? `${GOTO_MAX_NO_PATH}x ERR_NO_PATH` : null;
             if (reason) {
                 // Команду снимаем, крип возвращается к роли в этот же тик (ERR_NOT_FOUND).
-                console.log(`[${creep.room.name}] ${creep.name} goto ${creep.memory.goto} aborted at ${creep.pos.x}:${creep.pos.y}: ${reason}`);
+                log.warn(`goto:abort:${creep.room.name}`, `[${creep.room.name}] ${creep.name} goto ${creep.memory.goto} aborted at ${creep.pos.x}:${creep.pos.y}: ${reason}`);
                 delete creep.memory.goto;
                 delete creep.memory.goto_state;
                 return ERR_NOT_FOUND;
